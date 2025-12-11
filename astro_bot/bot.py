@@ -1,10 +1,7 @@
 """Простой echo-бот на базе python-telegram-bot."""
 """Я важный писюнец"""
-import asyncio
-import os
-import time as t
+import logging
 import sys
-from typing import Final, Optional
 
 from telegram import Update
 from telegram.ext import (
@@ -16,19 +13,16 @@ from telegram.ext import (
     filters,
 )
 
-# Название переменной окружения для токена бота
-TOKEN_ENV_VAR: Final[str] = "TELEGRAM_BOT_TOKEN"
+from astro_bot import config, db, repositories
 
-
-def get_bot_token() -> Optional[str]:
-    """Получить токен бота из переменной окружения."""
-    return os.getenv(TOKEN_ENV_VAR)
+logger = logging.getLogger(__name__)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправить приветственное сообщение на команду /start."""
     if update.message is None:
         return
+    ensure_user(update, context)
 
     greeting = (
         "Привет! Я учебный астробот. Пока что я просто повторяю ваши сообщения."
@@ -40,36 +34,69 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Повторить любое текстовое сообщение пользователя."""
     if update.message is None:
         return
+    ensure_user(update, context)
     await update.message.reply_text(update.message.text)
 
 
-async def run_bot(token: str) -> None:
+def ensure_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Создать или обновить пользователя в базе."""
+    tg_user = update.effective_user
+    if tg_user is None:
+        return
+
+    db_conn = context.application.bot_data.get("db_conn")
+    if db_conn is None:
+        logger.warning("Пропущена запись пользователя: нет соединения с БД")
+        return
+
+    full_name_parts = [part for part in (tg_user.first_name, tg_user.last_name) if part]
+    full_name = " ".join(full_name_parts) if full_name_parts else None
+
+    repositories.get_or_create_user(
+        conn=db_conn,
+        telegram_id=str(tg_user.id),
+        username=tg_user.username,
+        full_name=full_name,
+    )
+
+
+def run_bot(token: str) -> None:
     """Инициализировать приложение и запустить бота."""
+    config.setup_logging()
     application: Application = ApplicationBuilder().token(token).build()
+
+    # Инициализация БД и сохранение соединения в bot_data
+    db_conn = db.get_connection()
+    db.init_db(db_conn)
+    application.bot_data["db_conn"] = db_conn
 
     # Регистрация обработчиков
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Полный цикл запуска/пулинга/остановки
-    print("Astro Bot запущен. Нажмите Ctrl+C для остановки.")
-    await application.run_polling()
+    logger.info("Astro Bot запущен. Нажмите Ctrl+C для остановки.")
+    try:
+        application.run_polling()
+    finally:
+        db_conn.close()
 
 
 def main() -> None:
     """Точка входа для запуска бота."""
-    token = get_bot_token()
+    token = config.get_bot_token()
     if not token:
-        print(
-            f"Не найден токен в переменной окружения {TOKEN_ENV_VAR}. "
-            "Установите переменную и запустите бота снова."
+        logger.error(
+            "Не найден токен в переменной окружения %s. "
+            "Установите переменную и запустите бота снова.",
+            config.TELEGRAM_BOT_TOKEN_ENV,
         )
         sys.exit(1)
 
     try:
-        asyncio.run(run_bot(token))
+        run_bot(token)
     except KeyboardInterrupt:
-        print("Бот остановлен.")
+        logger.info("Бот остановлен.")
 
 
 if __name__ == "__main__":
