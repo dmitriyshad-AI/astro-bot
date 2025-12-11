@@ -1,2 +1,24 @@
-# astro-bot
-Educational project: Astro Bot (Python + Codex + Cursor)
+# Astro Bot
+
+Учебный Telegram-бот по астрологии. На первом шаге бот умеет только повторять сообщения пользователей (echo).
+
+## Требования
+- Python 3.10+
+
+## Быстрый старт
+1. Создайте и активируйте виртуальное окружение (macOS):
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+2. Установите зависимости:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Установите токен бота в переменную окружения `TELEGRAM_BOT_TOKEN`.
+4. Запустите бота:
+   ```bash
+   python -m astro_bot.bot
+   ```
+
+Бот отправит приветствие на команду `/start` и будет повторять все текстовые сообщения.
