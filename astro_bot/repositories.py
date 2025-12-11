@@ -41,3 +41,26 @@ def get_or_create_user(
     )
     conn.commit()
     return cursor.lastrowid
+
+
+def log_request(
+    conn: sqlite3.Connection,
+    *,
+    user_id: int,
+    request_type: str,
+    input_payload: Optional[str],
+    response_text: Optional[str],
+) -> int:
+    """
+    Сохранить запрос/ответ в таблицу requests.
+    Возвращает id созданной записи.
+    """
+    cursor = conn.execute(
+        """
+        INSERT INTO requests (user_id, type, input_payload, response_text)
+        VALUES (?, ?, ?, ?)
+        """,
+        (user_id, request_type, input_payload, response_text),
+    )
+    conn.commit()
+    return cursor.lastrowid

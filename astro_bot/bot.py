@@ -34,25 +34,41 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Повторить любое текстовое сообщение пользователя."""
     if update.message is None:
         return
-    ensure_user(update, context)
-    await update.message.reply_text(update.message.text)
+    user_id = ensure_user(update, context)
+    if user_id is None:
+        return
+
+    incoming_text = update.message.text
+    await update.message.reply_text(incoming_text)
+
+    db_conn = context.application.bot_data.get("db_conn")
+    if db_conn is None:
+        logger.warning("Пропущено логирование запроса: нет соединения с БД")
+        return
+    repositories.log_request(
+        conn=db_conn,
+        user_id=user_id,
+        request_type="echo",
+        input_payload=incoming_text,
+        response_text=incoming_text,
+    )
 
 
 def ensure_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Создать или обновить пользователя в базе."""
     tg_user = update.effective_user
     if tg_user is None:
-        return
+        return None
 
     db_conn = context.application.bot_data.get("db_conn")
     if db_conn is None:
         logger.warning("Пропущена запись пользователя: нет соединения с БД")
-        return
+        return None
 
     full_name_parts = [part for part in (tg_user.first_name, tg_user.last_name) if part]
     full_name = " ".join(full_name_parts) if full_name_parts else None
 
-    repositories.get_or_create_user(
+    return repositories.get_or_create_user(
         conn=db_conn,
         telegram_id=str(tg_user.id),
         username=tg_user.username,
