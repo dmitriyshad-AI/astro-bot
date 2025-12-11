@@ -1,7 +1,8 @@
 """Простой echo-бот на базе python-telegram-bot."""
-
+"""Я важный писюнец"""
 import asyncio
 import os
+import time as t
 import sys
 from typing import Final, Optional
 
