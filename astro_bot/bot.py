@@ -1,7 +1,9 @@
 """Простой echo-бот на базе python-telegram-bot."""
 """Я важный писюнец"""
+import json
 import logging
 import sys
+from typing import Optional
 
 from telegram import Update
 from telegram.ext import (
@@ -10,12 +12,14 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    ConversationHandler,
     filters,
 )
 
-from astro_bot import config, db, repositories
+from astro_bot import config, db, repositories, openai_client
 
 logger = logging.getLogger(__name__)
+ASKING_QUESTION = 1
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -54,7 +58,57 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-def ensure_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Начать сценарий задавания вопроса."""
+    ensure_user(update, context)
+    await update.message.reply_text("Напиши свой вопрос, я отвечу как астролог.")
+    return ASKING_QUESTION
+
+
+async def receive_question(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Получить вопрос, спросить OpenAI и вернуть ответ."""
+    if update.message is None:
+        return ConversationHandler.END
+
+    user_id = ensure_user(update, context)
+    if user_id is None:
+        await update.message.reply_text("Не удалось сохранить пользователя, попробуйте ещё раз.")
+        return ConversationHandler.END
+
+    question_text = update.message.text
+    db_conn = context.application.bot_data.get("db_conn")
+
+    try:
+        answer = openai_client.ask_gpt(question_text)
+    except openai_client.OpenAIError as exc:
+        logger.error("Ошибка OpenAI: %s", exc)
+        await update.message.reply_text("Не удалось получить ответ от модели. Попробуйте позже.")
+        return ConversationHandler.END
+
+    await update.message.reply_text(answer)
+
+    if db_conn is None:
+        logger.warning("Пропущено логирование запроса: нет соединения с БД")
+        return ConversationHandler.END
+
+    payload = json.dumps({"question": question_text})
+    repositories.log_request(
+        conn=db_conn,
+        user_id=user_id,
+        request_type="general_question",
+        input_payload=payload,
+        response_text=answer,
+    )
+    return ConversationHandler.END
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Отменить диалог /ask."""
+    await update.message.reply_text("Отменено.")
+    return ConversationHandler.END
+
+
+def ensure_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Optional[int]:
     """Создать или обновить пользователя в базе."""
     tg_user = update.effective_user
     if tg_user is None:
@@ -88,6 +142,17 @@ def run_bot(token: str) -> None:
 
     # Регистрация обработчиков
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(
+        ConversationHandler(
+            entry_points=[CommandHandler("ask", ask)],
+            states={
+                ASKING_QUESTION: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, receive_question)
+                ],
+            },
+            fallbacks=[CommandHandler("cancel", cancel)],
+        )
+    )
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Полный цикл запуска/пулинга/остановки

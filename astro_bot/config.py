@@ -1,22 +1,53 @@
 """Загрузка конфигурации и базовое логирование."""
 
-from pathlib import Path
 import logging
 import os
+from pathlib import Path
 from typing import Optional, Final
+
+from dotenv import load_dotenv
+
+# Автоматически загрузим .env, если он есть.
+load_dotenv()
 
 # Имена переменных окружения
 TELEGRAM_BOT_TOKEN_ENV: Final[str] = "TELEGRAM_BOT_TOKEN"
 DB_PATH_ENV: Final[str] = "ASTRO_BOT_DB_PATH"
 LOG_LEVEL_ENV: Final[str] = "ASTRO_BOT_LOG_LEVEL"
+OPENAI_API_KEY_ENV: Final[str] = "OPENAI_API_KEY"
+OPENAI_MODEL_ENV: Final[str] = "OPENAI_MODEL"
+OPENAI_TEMPERATURE_ENV: Final[str] = "OPENAI_TEMPERATURE"
 
 # Значения по умолчанию
 DEFAULT_DB_PATH: Path = Path(__file__).resolve().parent.parent / "astro_bot.db"
+DEFAULT_OPENAI_MODEL: str = "gpt-4o-mini"
+DEFAULT_TEMPERATURE: float = 0.7
 
 
 def get_bot_token() -> Optional[str]:
     """Получить токен бота из переменной окружения."""
     return os.getenv(TELEGRAM_BOT_TOKEN_ENV)
+
+
+def get_openai_api_key() -> Optional[str]:
+    """Получить ключ OpenAI."""
+    return os.getenv(OPENAI_API_KEY_ENV)
+
+
+def get_openai_model() -> str:
+    """Модель OpenAI, по умолчанию gpt-4o-mini."""
+    return os.getenv(OPENAI_MODEL_ENV, DEFAULT_OPENAI_MODEL)
+
+
+def get_openai_temperature() -> float:
+    """Температура для генерации, по умолчанию 0.7."""
+    raw = os.getenv(OPENAI_TEMPERATURE_ENV)
+    if raw is None:
+        return DEFAULT_TEMPERATURE
+    try:
+        return float(raw)
+    except ValueError:
+        return DEFAULT_TEMPERATURE
 
 
 def get_db_path() -> Path:
