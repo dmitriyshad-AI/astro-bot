@@ -28,6 +28,14 @@ if (theme.bg_color) {
   root.style.setProperty("--muted", theme.hint_color || "#475569");
 }
 
+function haptic() {
+  try {
+    tg?.HapticFeedback?.impactOccurred("light");
+  } catch {
+    /* ignore */
+  }
+}
+
 let statusText = isTelegram ? "Telegram WebApp" : "Браузер";
 let statusDetail = tg?.initDataUnsafe?.user
   ? `Привет, ${tg.initDataUnsafe.user.first_name}${tg.initDataUnsafe.user.last_name ? " " + tg.initDataUnsafe.user.last_name : ""}`
@@ -164,6 +172,7 @@ async function submitForm() {
   askError = "";
   insightsLoading = false;
   render();
+  haptic();
   try {
     const payload = {
       birth_date: form.birth_date,
@@ -197,6 +206,7 @@ async function fetchInsights() {
   insightsLoading = true;
   insightsError = "";
   render();
+  haptic();
   try {
     const res = await fetch(`/api/insights/${result.chart_id}`);
     const data = await res.json();
@@ -225,6 +235,7 @@ async function sendQuestion() {
   askLoading = true;
   askError = "";
   render();
+  haptic();
   try {
     const res = await fetch("/api/ask", {
       method: "POST",
@@ -262,6 +273,7 @@ async function openChartById(chartId) {
   if (!chartId) return;
   loading = true;
   render();
+  haptic();
   try {
     const res = await fetch(`/api/natal/${chartId}`);
     const data = await res.json();
@@ -397,8 +409,17 @@ function renderResult() {
   if (!result) return "";
   const wheelLink = result.wheel_url || "";
   const chart = chartDetails;
+  if (loading) {
+    return `
+      <div class="card glass-card skeleton-card" style="margin-top:12px;">
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton skeleton-line"></div>
+        <div class="skeleton skeleton-line short"></div>
+      </div>
+    `;
+  }
   return `
-    <div class="card" style="margin-top:12px;">
+    <div class="card glass-card" style="margin-top:12px;">
       <div class="muted" style="margin-bottom:8px;">Результат</div>
       ${renderTabs()}
       <div class="list">
@@ -480,12 +501,22 @@ function renderTabContent(chart, wheelLink) {
 function renderDebugBlock() {
   if (isTelegram) return "";
   if (qs("debug") !== "1") return "";
+  const diag = window.__debugInfo;
   return `
     <div class="card" style="margin-top:12px;">
       <div class="muted" style="margin-bottom:8px;">Debug validate initData (browser)</div>
       <textarea id="debug-initdata" style="width:100%; min-height:80px; border-radius:8px; padding:8px; border:1px solid #e2e8f0;"></textarea>
       <div class="actions" style="margin-top:10px;">
         <button class="btn" id="debug-validate">Validate</button>
+      </div>
+      <div class="muted" style="margin-top:10px;">Diagnostics</div>
+      <div class="muted-small">
+        ${diag ? `
+          OpenAI: ${diag.openai_configured ? "yes" : "no"}<br/>
+          WebApp URL set: ${diag.webapp_public_url_set ? "yes" : "no"}<br/>
+          Dist available: ${diag.dist_available ? "yes" : "no"}<br/>
+          Telegram token: ${diag.telegram_token_set ? "yes" : "no"}
+        ` : "нет данных"}
       </div>
     </div>
   `;
@@ -720,3 +751,16 @@ if (isTelegram && tg?.initData) {
 }
 
 fetchRecentCharts();
+
+// fetch debug info for diagnostics
+if (qs("debug") === "1") {
+  fetch("/api/debug/info")
+    .then((r) => r.json())
+    .then((d) => {
+      if (d.ok) {
+        window.__debugInfo = d.debug;
+        render();
+      }
+    })
+    .catch(() => {});
+}

@@ -1,16 +1,19 @@
 :root {
   color-scheme: light;
-  --bg: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.2), transparent 30%),
-        radial-gradient(circle at 80% 0%, rgba(120, 200, 255, 0.15), transparent 35%),
-        radial-gradient(circle at 50% 80%, rgba(200, 120, 255, 0.12), transparent 40%),
-        linear-gradient(135deg, #f4f7fb 0%, #dfe8ff 40%, #f7f8fb 100%);
-  --glass-bg: rgba(255, 255, 255, 0.6);
-  --glass-border: rgba(255, 255, 255, 0.4);
+  --bg: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.25), transparent 30%),
+        radial-gradient(circle at 80% 0%, rgba(120, 200, 255, 0.18), transparent 35%),
+        radial-gradient(circle at 50% 80%, rgba(200, 120, 255, 0.16), transparent 40%),
+        linear-gradient(140deg, #f6f8ff 0%, #e6edff 40%, #fdf7ff 100%);
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.5);
   --text: #0f172a;
   --muted: #475569;
   --accent: #6c7bff;
   --accent-2: #9a7bff;
   --shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+  --shadow-strong: 0 30px 80px rgba(15, 23, 42, 0.18);
+  --radius: 16px;
+  --radius-lg: 22px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -35,6 +38,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
 }
 
 .page {
@@ -60,25 +64,28 @@ body {
 }
 
 .card {
+  border-radius: var(--radius);
+}
+
+.glass-card {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
   padding: 16px;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   transition: transform 150ms ease, box-shadow 150ms ease;
 }
 
 @supports not ((backdrop-filter: blur(12px))) {
-  .card {
+  .glass-card {
     background: rgba(255, 255, 255, 0.9);
   }
 }
 
-.card:hover {
+.glass-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--shadow-strong);
 }
 
 .status-row {
@@ -181,7 +188,7 @@ body {
   padding: 12px;
   border-radius: 12px;
   border: 1px dashed rgba(108, 123, 255, 0.35);
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .list div + div {
@@ -326,6 +333,26 @@ body {
 .toast.show {
   opacity: 1;
   transform: translateX(-50%) translateY(-6px);
+}
+
+.skeleton-card {
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+.skeleton {
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(0,0,0,0.05), rgba(0,0,0,0.08), rgba(0,0,0,0.05));
+  background-size: 200% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+.skeleton-title { height: 18px; margin-bottom: 10px; }
+.skeleton-line { margin-top: 8px; }
+.skeleton-line.short { width: 60%; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .chat-list {

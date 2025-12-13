@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
-import json
 
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, Header, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -20,13 +21,39 @@ from astro_bot import config as bot_config
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="AstroGlass API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup
+    mount_static_if_available(app)
+    conn = db.get_connection()
+    db.init_db(conn)
+    yield
+    # shutdown — nothing special for now
+
+
+app = FastAPI(title="AstroGlass API", lifespan=lifespan)
 
 
 @app.get("/api/health")
 async def health():
     """Simple healthcheck."""
     return {"status": "ok"}
+
+
+@app.get("/api/debug/info")
+async def debug_info():
+    """Lightweight diagnostics (no secrets)."""
+    dist_dir, index_html = get_dist_paths()
+    return {
+        "ok": True,
+        "debug": {
+            "webapp_public_url_set": bool(bot_config.get_webapp_url()),
+            "openai_configured": bool(config.get_openai_api_key()),
+            "telegram_token_set": bool(config.get_telegram_bot_token()),
+            "dist_available": bool(dist_dir and index_html and dist_dir.exists() and index_html.exists()),
+        },
+    }
 
 
 def get_dist_paths() -> tuple[Optional[Path], Optional[Path]]:
@@ -70,13 +97,6 @@ async def serve_root():
         """,
         status_code=200,
     )
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    mount_static_if_available(app)
-    conn = db.get_connection()
-    db.init_db(conn)
 
 
 def get_init_data_from_request(request: Request, auth_header: Optional[str]) -> Optional[str]:

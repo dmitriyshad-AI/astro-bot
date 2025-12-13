@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from astro_api import config
@@ -120,7 +120,7 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
 
 def upsert_user(conn: sqlite3.Connection, user: dict) -> None:
     """Insert or update user from Telegram WebApp initData."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """
         INSERT INTO users
@@ -167,7 +167,7 @@ def upsert_cached_location(
     display_name: str,
 ) -> None:
     """Upsert geo result."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """
         INSERT INTO geo_cache (query, lat, lng, tz_str, display_name, updated_at)
@@ -198,7 +198,7 @@ def insert_profile(
     tz_str: str,
 ) -> int:
     """Insert profile and return id."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     cur = conn.execute(
         """
         INSERT INTO profiles (
@@ -234,7 +234,7 @@ def insert_chart(
     summary: str | None,
     llm_summary: str | None = None,
 ) -> int:
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     cur = conn.execute(
         """
         INSERT INTO charts (profile_id, chart_json, wheel_path, summary, llm_summary, created_at)
@@ -311,7 +311,7 @@ def list_recent_charts(conn: sqlite3.Connection, limit: int = 5):
 
 def insert_chat_message(conn: sqlite3.Connection, *, chart_id: int, question: str, answer: str | None) -> int:
     """Store chat Q/A for a chart."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     cur = conn.execute(
         """
         INSERT INTO chat_messages (chart_id, question, answer, created_at)

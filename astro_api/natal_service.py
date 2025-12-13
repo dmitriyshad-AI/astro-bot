@@ -95,6 +95,7 @@ def calculate_natal_chart(
                 "chart_id": chart_row["id"],
                 "profile_id": existing_profile["id"],
                 "summary": chart_row["summary"] or "",
+                "llm_summary": chart_row["llm_summary"] if "llm_summary" in chart_row.keys() else None,
                 "context_text": "",
                 "wheel_path": chart_row["wheel_path"],
                 "chart": json.loads(chart_row["chart_json"]),
