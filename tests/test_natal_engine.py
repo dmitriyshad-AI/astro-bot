@@ -11,6 +11,13 @@ class NatalEngineTest(unittest.TestCase):
         result = natal_engine.parse_birth_date("12.03.1990")
         self.assertEqual(result, dt.date(1990, 3, 12))
 
+    def test_parse_birth_time(self):
+        self.assertEqual(natal_engine.parse_birth_time("08:30"), dt.time(8, 30))
+        self.assertIsNone(natal_engine.parse_birth_time("не знаю"))
+        self.assertIsNone(natal_engine.parse_birth_time(None))
+        with self.assertRaises(natal_engine.NatalError):
+            natal_engine.parse_birth_time("25:99")
+
     def test_generate_chart_from_location(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             res = natal_engine.generate_natal_chart_from_location(

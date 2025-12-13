@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence
+from threading import Lock
 
 import requests
 from kerykeion import (
@@ -52,6 +53,7 @@ MAJOR_ASPECTS = {"conjunction", "opposition", "trine", "square", "sextile"}
 CHART_CLEANUP_DAYS = 7
 
 tz_finder = TimezoneFinder()
+natal_lock = Lock()
 
 
 class NatalError(Exception):
@@ -355,17 +357,17 @@ def generate_natal_chart(
     birth_date = parse_birth_date(birth_date_str)
     birth_time = parse_birth_time(birth_time_str)
     location = resolve_location(place_query, db_conn)
-
-    subject = build_subject(
-        name=user_identifier,
-        birth_date=birth_date,
-        birth_time=birth_time,
-        location=location,
-    )
-    svg_path = render_svg(subject, charts_dir, f"natal_{user_identifier}_{int(time.time())}")
-    chart_data = ChartDataFactory.create_natal_chart_data(subject)
-    summary = build_summary(subject, chart_data.aspects, location, birth_date, birth_time)
-    context_text = to_context(subject)
+    with natal_lock:
+        subject = build_subject(
+            name=user_identifier,
+            birth_date=birth_date,
+            birth_time=birth_time,
+            location=location,
+        )
+        svg_path = render_svg(subject, charts_dir, f"natal_{user_identifier}_{int(time.time())}")
+        chart_data = ChartDataFactory.create_natal_chart_data(subject)
+        summary = build_summary(subject, chart_data.aspects, location, birth_date, birth_time)
+        context_text = to_context(subject)
     return NatalResult(summary=summary, svg_path=svg_path, context_text=context_text, location=location)
 
 
@@ -390,14 +392,15 @@ def generate_natal_chart_from_location(
         lng=lng,
         tz_str=tz_str,
     )
-    subject = build_subject(
-        name=user_identifier,
-        birth_date=birth_date,
-        birth_time=birth_time,
-        location=location,
-    )
-    svg_path = render_svg(subject, charts_dir, f"natal_{user_identifier}_{int(time.time())}")
-    chart_data = ChartDataFactory.create_natal_chart_data(subject)
-    summary = build_summary(subject, chart_data.aspects, location, birth_date, birth_time)
-    context_text = to_context(subject)
+    with natal_lock:
+        subject = build_subject(
+            name=user_identifier,
+            birth_date=birth_date,
+            birth_time=birth_time,
+            location=location,
+        )
+        svg_path = render_svg(subject, charts_dir, f"natal_{user_identifier}_{int(time.time())}")
+        chart_data = ChartDataFactory.create_natal_chart_data(subject)
+        summary = build_summary(subject, chart_data.aspects, location, birth_date, birth_time)
+        context_text = to_context(subject)
     return NatalResult(summary=summary, svg_path=svg_path, context_text=context_text, location=location)

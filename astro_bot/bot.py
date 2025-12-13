@@ -234,7 +234,8 @@ async def natal_place(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await update.message.reply_text("Не удалось сформировать разбор. Попробуйте позже.")
         return ConversationHandler.END
 
-    await update.message.reply_text(result.summary)
+    for part in chunk_text(result.summary):
+        await update.message.reply_text(part)
 
     try:
         with result.svg_path.open("rb") as svg_file:
@@ -268,7 +269,8 @@ async def natal_place(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
                 ),
                 role="астролог",
             )
-            await update.message.reply_text(llm_answer)
+            for part in chunk_text(llm_answer):
+                await update.message.reply_text(part)
             repositories.log_request(
                 conn=db_conn,
                 user_id=user_id,
@@ -351,6 +353,21 @@ def ensure_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Optional[
         username=tg_user.username,
         full_name=full_name,
     )
+
+
+def chunk_text(text: str, max_len: int = 3500) -> list[str]:
+    """Разбить длинный текст на части для Telegram."""
+    lines = text.splitlines()
+    chunks = []
+    current = ""
+    for line in lines:
+        if len(current) + len(line) + 1 > max_len:
+            chunks.append(current.rstrip())
+            current = ""
+        current += line + "\n"
+    if current.strip():
+        chunks.append(current.rstrip())
+    return chunks
 
 
 def run_bot(token: str) -> None:
