@@ -652,7 +652,7 @@ function renderCompat() {
     ? keyAspects
         .map(
           (a, idx) =>
-            `<div class="clickable" data-aspect="${idx}" data-aspect-type="key">${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`
+            `<div class="clickable" data-aspect="${idx}" data-aspect-type="key">💞 ${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`
         )
         .join("")
     : "<div class='muted-small'>Нет данных</div>";
@@ -660,7 +660,7 @@ function renderCompat() {
     ? topAspects
         .map(
           (a, idx) =>
-            `<div class="clickable" data-aspect="${idx}" data-aspect-type="top">${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`
+            `<div class="clickable" data-aspect="${idx}" data-aspect-type="top">🔗 ${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`
         )
         .join("")
     : "<div class='muted-small'>Нет данных</div>";
@@ -708,31 +708,32 @@ function renderCompat() {
       }
     </div>
     ${compatError ? `<div class="error">${compatError}</div>` : ""}
-    <div class="actions" style="margin-top:10px;">
-      <button class="btn" id="compat-calc" ${compatLoading ? "disabled" : ""}>${compatLoading ? "Считаю..." : "Совместимость"}</button>
-    </div>
+      <div class="actions" style="margin-top:10px;">
+        <button class="btn" id="compat-calc" ${compatLoading ? "disabled" : ""}>${compatLoading ? "Считаю..." : "Совместимость"}</button>
+        ${compatResult ? `<button class="btn ghost" id="share-compat">Поделиться</button>` : ""}
+      </div>
     ${
       compatResult
         ? `
       <div class="section-title" style="margin-top:12px;">Score</div>
-      <div class="pill">${score?.value ?? "?"} — ${score?.description ?? "Оценка отношений"}</div>
-      <div class="section-title">Ключевые аспекты</div>
+      <div class="pill">❤️ ${score?.value ?? "?"} — ${score?.description ?? "Оценка отношений"}</div>
+      <div class="section-title">🔑 Ключевые аспекты</div>
       <div class="list">${keyHtml}</div>
-      <div class="section-title">Топ аспектов</div>
+      <div class="section-title">⭐ Топ аспектов</div>
       <div class="list">${topHtml}</div>
-      <div class="section-title">Домовые наложения</div>
+      <div class="section-title">🏠 Домовые наложения</div>
       <div class="list">
         ${
           overlays.first_in_second?.length
             ? overlays.first_in_second
-                .map((o, idx) => `<div class="clickable" data-overlay="first_${idx}">Моя точка ${o.point} в его/ее доме ${prettyHouse(o.house)}</div>`)
+                .map((o, idx) => `<div class="clickable" data-overlay="first_${idx}">🌟 Моя точка ${o.point} в его/ее доме ${prettyHouse(o.house)}</div>`)
                 .join("")
             : "<div class='muted-small'>Нет данных</div>"
         }
         ${
           overlays.second_in_first?.length
             ? overlays.second_in_first
-                .map((o, idx) => `<div class="clickable" data-overlay="second_${idx}">Его/ее точка ${o.point} в моём доме ${prettyHouse(o.house)}</div>`)
+                .map((o, idx) => `<div class="clickable" data-overlay="second_${idx}">🌟 Его/ее точка ${o.point} в моём доме ${prettyHouse(o.house)}</div>`)
                 .join("")
             : ""
         }
@@ -748,7 +749,7 @@ function renderCompat() {
 function renderTabContent(chart, wheelLink) {
   if (currentTab === "wheel") {
     return wheelLink
-      ? `<div class="section-title">SVG wheel</div><div class="wheel-frame"><object data="${wheelLink}" type="image/svg+xml" style="width:100%; min-height:320px;"></object></div>`
+      ? `<div class="section-title">🌀 Wheel</div><div class="wheel-frame"><object data="${wheelLink}" type="image/svg+xml" style="width:100%; min-height:320px;"></object></div>`
       : "<div class='muted-small'>Нет SVG</div>";
   }
   if (currentTab === "compat") {
@@ -796,10 +797,10 @@ function renderTabContent(chart, wheelLink) {
   if (!chart) return "<div class='muted-small'>Нет данных</div>";
   if (currentTab === "highlights") {
     return `
-      <div><strong>Summary:</strong> ${result.llm_summary ? result.llm_summary : result.summary ? result.summary.split("\\n")[0] : "—"}</div>
-      <div class="section-title">Солнце / Луна / Asc / MC</div>
+      <div><strong>✨ Главный акцент:</strong><br/>${result.llm_summary ? result.llm_summary : result.summary ? result.summary.split("\\n")[0] : "—"}</div>
+      <div class="section-title">🌞🌙 Asc / MC</div>
       <div class="pill-row">
-        ${chart.highlights && chart.highlights.length ? chart.highlights.map((h) => `<span class="tag">${h}</span>`).join("") : "<div class='muted-small'>Нет данных</div>"}
+        ${chart.highlights && chart.highlights.length ? chart.highlights.map((h) => `<span class="tag">✨ ${h}</span>`).join("") : "<div class='muted-small'>Нет данных</div>"}
       </div>
     `;
   }
@@ -808,14 +809,14 @@ function renderTabContent(chart, wheelLink) {
       ? chart.planets
           .map(
             (p, idx) =>
-              `<div class="clickable planet-item" data-planet="${idx}">${p}</div>`
+              `<div class="clickable planet-item" data-planet="${idx}">🪐 ${p}</div>`
           )
           .join("")
       : "<div class='muted-small'>Нет данных</div>";
   }
   if (currentTab === "houses") {
     return chart.houses && chart.houses.length
-      ? chart.houses.map((h) => `<div class="tag">Дом ${h.num}: ${h.sign} ${h.pos.toFixed(2)}°</div>`).join("")
+      ? chart.houses.map((h) => `<div class="tag">🏠 Дом ${h.num}: ${h.sign} ${h.pos.toFixed(2)}°</div>`).join("")
       : "<div class='muted-small'>Нет данных</div>";
   }
   if (currentTab === "aspects") {
@@ -823,7 +824,7 @@ function renderTabContent(chart, wheelLink) {
       ? chart.aspects
           .map(
             (a, idx) =>
-              `<div class="clickable aspect-item" data-aspect-native="${idx}">${a.text}</div>`
+              `<div class="clickable aspect-item" data-aspect-native="${idx}">🔗 ${a.text}</div>`
           )
           .join("")
       : "<div class='muted-small'>Нет аспектов</div>";
@@ -1142,6 +1143,7 @@ function render() {
       render();
     });
   });
+  document.getElementById("share-compat")?.addEventListener("click", shareCompatText);
   document.getElementById("modal-close")?.addEventListener("click", () => {
     modalVisible = false;
     render();

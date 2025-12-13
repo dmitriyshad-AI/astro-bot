@@ -138,19 +138,31 @@ def resolve_location(query: str, conn) -> LocationResult:
 
 
 def geocode_nominatim(query: str) -> LocationResult:
-    """Запрос к Nominatim (с паузой <=1 rps) + определение таймзоны."""
+    """Запрос к Nominatim (с паузой <=1 rps) + определение таймзоны, c ретраями."""
     user_agent = config.get_user_agent()
     headers = {"User-Agent": user_agent}
     params = {"q": query, "format": "json", "limit": 1}
 
-    time.sleep(1.0)
-    try:
-        resp = requests.get(NOMINATIM_URL, params=params, headers=headers, timeout=20)
-        resp.raise_for_status()
-        data = resp.json()
-    except requests.RequestException as exc:
-        logger.exception("Ошибка геокодинга Nominatim")
-        raise NatalError("Не удалось определить координаты. Попробуйте другое место.") from exc
+    last_exc = None
+    for attempt in range(3):
+        if attempt > 0:
+            time.sleep(1 + attempt * 0.5)
+        else:
+            time.sleep(1.0)
+        try:
+            resp = requests.get(NOMINATIM_URL, params=params, headers=headers, timeout=8)
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except requests.Timeout as exc:
+            last_exc = exc
+            logger.warning("Timeout Nominatim for query=%s attempt=%s", query, attempt + 1)
+            continue
+        except requests.RequestException as exc:
+            logger.exception("Ошибка геокодинга Nominatim")
+            raise NatalError("Не удалось определить координаты. Попробуйте другое место.") from exc
+    else:
+        raise NatalError("Сервис геокодинга не ответил. Попробуйте ещё раз или уточните место.") from last_exc
 
     if not data:
         raise NatalError("Место не найдено. Уточните город/страну.")
