@@ -69,4 +69,5 @@ Telegram Mini App требует HTTPS-URL; локально можно смот
 
 ## Самопроверка без Telegram
 - CLI: `python -m astro_bot.debug_natal --date 12.03.1990 --time 08:30 --place "Москва, Россия"`
-- Тесты: `python -m unittest tests/test_natal_engine.py`
+- Тесты: `python -m unittest tests.test_natal_engine tests.test_init_data_validation`
+- Веб auth: `npm run dev` (в webapp) и `uvicorn astro_api.main:app --reload --port 8000`, затем `http://localhost:5173/?debug=1` → вставить initData и нажать Validate.
