@@ -10,9 +10,13 @@ from astro_bot import config
 
 
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
-    """Создать соединение с SQLite."""
+    """Создать соединение с SQLite.
+
+    check_same_thread=False — чтобы одно соединение можно было читать/писать из фоновых потоков
+    (мы вызываем расчёт натала через asyncio.to_thread).
+    """
     path = db_path or config.get_db_path()
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
