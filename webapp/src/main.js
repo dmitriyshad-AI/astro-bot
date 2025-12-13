@@ -73,6 +73,79 @@ let compatForm = {
 let compatLoading = false;
 let compatError = "";
 let compatResult = null;
+let debugEvents = [];
+let selfPlaceSuggestions = [];
+let partnerPlaceSuggestions = [];
+let selfPlaceLoading = false;
+let partnerPlaceLoading = false;
+let modalContent = "";
+let modalVisible = false;
+let onboardingStep = 0;
+let onboardingVisible = false;
+const ONBOARDING_KEY = "astroglass_onboarding_done";
+let modalContent = "";
+let modalVisible = false;
+
+function copyShareText() {
+  try {
+    const parts = [];
+    if (result?.llm_summary) parts.push(`Моя карта: ${result.llm_summary}`);
+    if (compatResult?.score) parts.push(`Совместимость: ${compatResult.score.value ?? "?"} — ${compatResult.score.description ?? ""}`);
+    if (compatResult?.key_aspects?.length) {
+      const keyTxt = compatResult.key_aspects.slice(0, 3).map((a) => `${a.p1}—${a.p2} (${a.aspect})`).join("; ");
+      parts.push(`Ключевые аспекты: ${keyTxt}`);
+    }
+    const text = parts.join("\n\n") || "AstroGlass";
+    if (navigator.share) {
+      navigator.share({ text }).catch(() => {});
+    } else {
+      navigator.clipboard?.writeText(text);
+      showToast("Скопировано");
+    }
+  } catch {
+    showToast("Не удалось скопировать");
+  }
+}
+
+function showModal(text) {
+  modalContent = text;
+  modalVisible = true;
+  haptic();
+  render();
+}
+
+function shareCompatText() {
+  try {
+    const parts = [];
+    if (compatResult?.score) parts.push(`Совместимость: ${compatResult.score.value ?? "?"} — ${compatResult.score.description ?? ""}`);
+    if (compatResult?.key_aspects?.length) {
+      const keyTxt = compatResult.key_aspects.slice(0, 3).map((a) => `${a.p1}—${a.p2} (${a.aspect})`).join("; ");
+      parts.push(`Ключевые аспекты: ${keyTxt}`);
+    }
+    const text = parts.join("\n\n") || "Совместимость AstroGlass";
+    if (navigator.share) {
+      navigator.share({ text }).catch(() => {});
+    } else {
+      navigator.clipboard?.writeText(text);
+      showToast("Скопировано");
+    }
+  } catch {
+    showToast("Не удалось скопировать");
+  }
+}
+
+function startOnboarding() {
+  if (localStorage.getItem(ONBOARDING_KEY)) return;
+  onboardingStep = 0;
+  onboardingVisible = true;
+  render();
+}
+
+function finishOnboarding() {
+  onboardingVisible = false;
+  localStorage.setItem(ONBOARDING_KEY, "1");
+  render();
+}
 
 if (lastChart) {
   result = lastChart.result;
@@ -180,6 +253,56 @@ const doPlaceSuggest = debounce(async (query) => {
   }
 }, 400);
 
+const doSelfPlaceSuggest = debounce(async (query) => {
+  if (!query || query.length < 2) {
+    selfPlaceSuggestions = [];
+    selfPlaceLoading = false;
+    render();
+    return;
+  }
+  selfPlaceLoading = true;
+  render();
+  try {
+    const res = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if (data.ok) {
+      selfPlaceSuggestions = [{ display_name: data.location.display_name }];
+    } else {
+      selfPlaceSuggestions = [];
+    }
+  } catch {
+    selfPlaceSuggestions = [];
+  } finally {
+    selfPlaceLoading = false;
+    render();
+  }
+}, 400);
+
+const doPartnerPlaceSuggest = debounce(async (query) => {
+  if (!query || query.length < 2) {
+    partnerPlaceSuggestions = [];
+    partnerPlaceLoading = false;
+    render();
+    return;
+  }
+  partnerPlaceLoading = true;
+  render();
+  try {
+    const res = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if (data.ok) {
+      partnerPlaceSuggestions = [{ display_name: data.location.display_name }];
+    } else {
+      partnerPlaceSuggestions = [];
+    }
+  } catch {
+    partnerPlaceSuggestions = [];
+  } finally {
+    partnerPlaceLoading = false;
+    render();
+  }
+}, 400);
+
 async function submitForm() {
   error = "";
   const validationError = validateForm();
@@ -220,6 +343,7 @@ async function submitForm() {
     preloadCompatFromChart(data.chart);
   } catch (e) {
     error = e.message || "Ошибка запроса";
+    debugEvents.push({ type: "error", msg: error, ts: Date.now() });
   } finally {
     loading = false;
     render();
@@ -366,12 +490,15 @@ async function calcCompat() {
       score: data.score,
       key_aspects: data.key_aspects,
       top_aspects: data.top_aspects,
+      overlays: data.overlays,
       wheel_url: data.wheel_url,
     };
   } catch (e) {
     compatError = e.message || "Ошибка запроса";
+    debugEvents.push({ type: "compat_error", msg: compatError, ts: Date.now() });
     showToast(compatError);
   } finally {
+    if (debugEvents.length > 20) debugEvents = debugEvents.slice(-20);
     compatLoading = false;
     render();
   }
@@ -502,7 +629,10 @@ function renderResult() {
       <div class="list">
         ${renderTabContent(chart, wheelLink)}
       </div>
-      ${currentTab === "insights" ? renderInsightsButton() : ""}
+      <div class="actions" style="margin-top:10px; gap:10px;">
+        ${currentTab === "insights" ? renderInsightsButton() : ""}
+        <button class="btn ghost" id="share-btn" title="Скопировать результат">Скопировать</button>
+      </div>
     </div>
   `;
 }
@@ -512,6 +642,30 @@ function renderCompat() {
   const keyAspects = compatResult?.key_aspects || [];
   const topAspects = compatResult?.top_aspects || [];
   const wheelLink = compatResult?.wheel_url;
+  const overlays = compatResult?.overlays || {};
+  if (compatLoading) {
+    return `
+      <div class="skeleton skeleton-title"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line short"></div>
+    `;
+  }
+  const keyHtml = keyAspects.length
+    ? keyAspects
+        .map(
+          (a, idx) =>
+            `<div class="clickable" data-aspect="${idx}" data-aspect-type="key">${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`
+        )
+        .join("")
+    : "<div class='muted-small'>Нет данных</div>";
+  const topHtml = topAspects.length
+    ? topAspects
+        .map(
+          (a, idx) =>
+            `<div class="clickable" data-aspect="${idx}" data-aspect-type="top">${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`
+        )
+        .join("")
+    : "<div class='muted-small'>Нет данных</div>";
   return `
     <div class="section-title">Моя карта</div>
     <div class="field">
@@ -525,6 +679,14 @@ function renderCompat() {
     <div class="field">
       <label for="self_place">Место</label>
       <input class="input" id="self_place" type="text" placeholder="Город, страна" value="${compatForm.self_place}" />
+      ${selfPlaceLoading ? '<div class="muted-small"><span class="spinner"></span> Поиск...</div>' : ""}
+      ${
+        selfPlaceSuggestions.length
+          ? `<div class="suggestions">${selfPlaceSuggestions
+              .map((s, idx) => `<div data-self-sidx="${idx}">${s.display_name}</div>`)
+              .join("")}</div>`
+          : ""
+      }
     </div>
     <div class="section-title">Партнёр</div>
     <div class="field">
@@ -538,6 +700,14 @@ function renderCompat() {
     <div class="field">
       <label for="partner_place">Место</label>
       <input class="input" id="partner_place" type="text" placeholder="Город, страна" value="${compatForm.partner_place}" />
+      ${partnerPlaceLoading ? '<div class="muted-small"><span class="spinner"></span> Поиск...</div>' : ""}
+      ${
+        partnerPlaceSuggestions.length
+          ? `<div class="suggestions">${partnerPlaceSuggestions
+              .map((s, idx) => `<div data-partner-sidx="${idx}">${s.display_name}</div>`)
+              .join("")}</div>`
+          : ""
+      }
     </div>
     ${compatError ? `<div class="error">${compatError}</div>` : ""}
     <div class="actions" style="margin-top:10px;">
@@ -549,12 +719,25 @@ function renderCompat() {
       <div class="section-title" style="margin-top:12px;">Score</div>
       <div class="pill">${score?.value ?? "?"} — ${score?.description ?? "Оценка отношений"}</div>
       <div class="section-title">Ключевые аспекты</div>
-      <div class="list">
-        ${keyAspects.length ? keyAspects.map((a) => `<div>${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`).join("") : "<div class='muted-small'>Нет данных</div>"}
-      </div>
+      <div class="list">${keyHtml}</div>
       <div class="section-title">Топ аспектов</div>
+      <div class="list">${topHtml}</div>
+      <div class="section-title">Домовые наложения</div>
       <div class="list">
-        ${topAspects.length ? topAspects.map((a) => `<div>${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`).join("") : "<div class='muted-small'>Нет данных</div>"}
+        ${
+          overlays.first_in_second?.length
+            ? overlays.first_in_second
+                .map((o, idx) => `<div class="clickable" data-overlay="first_${idx}">Моя точка ${o.point} в его/ее доме ${prettyHouse(o.house)}</div>`)
+                .join("")
+            : "<div class='muted-small'>Нет данных</div>"
+        }
+        ${
+          overlays.second_in_first?.length
+            ? overlays.second_in_first
+                .map((o, idx) => `<div class="clickable" data-overlay="second_${idx}">Его/ее точка ${o.point} в моём доме ${prettyHouse(o.house)}</div>`)
+                .join("")
+            : ""
+        }
       </div>
       <div class="section-title">Wheel</div>
       ${wheelLink ? `<div style="margin-top:8px; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0;"><object data="${wheelLink}" type="image/svg+xml" style="width:100%; min-height:320px;"></object></div>` : "<div class='muted-small'>Нет SVG</div>"}
@@ -567,14 +750,19 @@ function renderCompat() {
 function renderTabContent(chart, wheelLink) {
   if (currentTab === "wheel") {
     return wheelLink
-      ? `<div class="section-title">SVG wheel</div><div style="margin-top:8px; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0;"><object data="${wheelLink}" type="image/svg+xml" style="width:100%; min-height:320px;"></object></div>`
+      ? `<div class="section-title">SVG wheel</div><div class="wheel-frame"><object data="${wheelLink}" type="image/svg+xml" style="width:100%; min-height:320px;"></object></div>`
       : "<div class='muted-small'>Нет SVG</div>";
   }
   if (currentTab === "compat") {
     return renderCompat();
   }
   if (currentTab === "insights") {
-    if (insightsLoading) return "<div class='muted-small'>Генерирую инсайты...</div>";
+    if (insightsLoading)
+      return `
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton skeleton-line"></div>
+        <div class="skeleton skeleton-line short"></div>
+      `;
     if (insightsText) return `<div class="list"><div>${insightsText.replace(/\n/g, "<br/>")}</div></div>`;
     return `
       ${insightsError ? `<div class="error">${insightsError}</div>` : ""}
@@ -619,7 +807,12 @@ function renderTabContent(chart, wheelLink) {
   }
   if (currentTab === "planets") {
     return chart.planets && chart.planets.length
-      ? chart.planets.map((p) => `<div>${p}</div>`).join("")
+      ? chart.planets
+          .map(
+            (p, idx) =>
+              `<div class="clickable planet-item" data-planet="${idx}">${p}</div>`
+          )
+          .join("")
       : "<div class='muted-small'>Нет данных</div>";
   }
   if (currentTab === "houses") {
@@ -629,7 +822,12 @@ function renderTabContent(chart, wheelLink) {
   }
   if (currentTab === "aspects") {
     return chart.aspects && chart.aspects.length
-      ? chart.aspects.map((a) => `<div>${a.text}</div>`).join("")
+      ? chart.aspects
+          .map(
+            (a, idx) =>
+              `<div class="clickable aspect-item" data-aspect-native="${idx}">${a.text}</div>`
+          )
+          .join("")
       : "<div class='muted-small'>Нет аспектов</div>";
   }
   return "";
@@ -639,6 +837,7 @@ function renderDebugBlock() {
   if (isTelegram) return "";
   if (qs("debug") !== "1") return "";
   const diag = window.__debugInfo;
+  const errors = debugEvents.slice(-10).reverse();
   return `
     <div class="card" style="margin-top:12px;">
       <div class="muted" style="margin-bottom:8px;">Debug validate initData (browser)</div>
@@ -654,6 +853,10 @@ function renderDebugBlock() {
           Dist available: ${diag.dist_available ? "yes" : "no"}<br/>
           Telegram token: ${diag.telegram_token_set ? "yes" : "no"}
         ` : "нет данных"}
+      </div>
+      <div class="muted" style="margin-top:10px;">Последние ошибки</div>
+      <div class="muted-small">
+        ${errors.length ? errors.map((e) => `<div>${new Date(e.ts).toLocaleTimeString()} — ${e.type}: ${e.msg}</div>`).join("") : "нет"}
       </div>
     </div>
   `;
@@ -787,6 +990,17 @@ function render() {
       ${renderDebugBlock()}
     </div>
     <div class="toast"></div>
+    ${modalVisible ? `
+      <div class="modal-backdrop" id="modal-close"></div>
+      <div class="modal-sheet glass-card">
+        <div class="section-title">Детали</div>
+        <div class="muted" style="margin-top:6px;">${modalContent}</div>
+        <div class="actions" style="margin-top:12px;">
+          <button class="btn" id="modal-close">Закрыть</button>
+        </div>
+      </div>
+    ` : ""}
+    ${onboardingVisible ? renderOnboarding() : ""}
   `;
 
   document.getElementById("continue-btn")?.addEventListener("click", () => {
@@ -840,6 +1054,26 @@ function render() {
       }
     });
   });
+  document.querySelectorAll("[data-self-sidx]")?.forEach((el) => {
+    el.addEventListener("click", () => {
+      const idx = Number(el.dataset.selfSidx);
+      if (!Number.isNaN(idx) && selfPlaceSuggestions[idx]) {
+        compatForm.self_place = selfPlaceSuggestions[idx].display_name;
+        selfPlaceSuggestions = [];
+        render();
+      }
+    });
+  });
+  document.querySelectorAll("[data-partner-sidx]")?.forEach((el) => {
+    el.addEventListener("click", () => {
+      const idx = Number(el.dataset.partnerSidx);
+      if (!Number.isNaN(idx) && partnerPlaceSuggestions[idx]) {
+        compatForm.partner_place = partnerPlaceSuggestions[idx].display_name;
+        partnerPlaceSuggestions = [];
+        render();
+      }
+    });
+  });
 
   document.querySelectorAll(".tab")?.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -878,6 +1112,7 @@ function render() {
       if (cid) openChartById(cid);
     });
   });
+  document.getElementById("share-btn")?.addEventListener("click", copyShareText);
 
   document.getElementById("compat-calc")?.addEventListener("click", () => {
     compatForm.self_date = formatDateInput(document.getElementById("self_date").value);
@@ -887,6 +1122,59 @@ function render() {
     compatForm.partner_time = formatTimeInput(document.getElementById("partner_time").value);
     compatForm.partner_place = document.getElementById("partner_place").value.trim();
     calcCompat();
+  });
+  document.getElementById("self_place")?.addEventListener("input", (e) => {
+    compatForm.self_place = e.target.value;
+    doSelfPlaceSuggest(compatForm.self_place);
+  });
+  document.getElementById("partner_place")?.addEventListener("input", (e) => {
+    compatForm.partner_place = e.target.value;
+    doPartnerPlaceSuggest(compatForm.partner_place);
+  });
+  document.querySelectorAll("[data-aspect]")?.forEach((el) => {
+    el.addEventListener("click", () => {
+      const idx = Number(el.dataset.aspect);
+      const type = el.dataset.aspectType;
+      const list = type === "key" ? compatResult?.key_aspects : compatResult?.top_aspects;
+      if (!list || Number.isNaN(idx) || !list[idx]) return;
+      const a = list[idx];
+      modalContent = `${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)`;
+      modalVisible = true;
+      haptic();
+      render();
+    });
+  });
+  document.getElementById("modal-close")?.addEventListener("click", () => {
+    modalVisible = false;
+    render();
+  });
+  document.querySelectorAll(".aspect-item")?.forEach((el) => {
+    el.addEventListener("click", () => {
+      const idx = Number(el.dataset.aspectNative);
+      if (chartDetails?.aspects && !Number.isNaN(idx) && chartDetails.aspects[idx]) {
+        showModal(chartDetails.aspects[idx].text);
+      }
+    });
+  });
+  document.querySelectorAll(".planet-item")?.forEach((el) => {
+    el.addEventListener("click", () => {
+      const idx = Number(el.dataset.planet);
+      if (chartDetails?.planets && !Number.isNaN(idx) && chartDetails.planets[idx]) {
+        showModal(chartDetails.planets[idx]);
+      }
+    });
+  });
+  document.querySelectorAll("[data-overlay]")?.forEach((el) => {
+    el.addEventListener("click", () => {
+      const id = el.dataset.overlay;
+      if (!compatResult?.overlays || !id) return;
+      const [kind, idxStr] = id.split("_");
+      const idx = Number(idxStr);
+      const list = kind === "first" ? compatResult.overlays.first_in_second : compatResult.overlays.second_in_first;
+      if (!list || Number.isNaN(idx) || !list[idx]) return;
+      const item = list[idx];
+      showModal(kind === "first" ? `Моя точка ${item.point} в его/ее доме ${prettyHouse(item.house)}` : `Его/ее точка ${item.point} в моём доме ${prettyHouse(item.house)}`);
+    });
   });
 }
 

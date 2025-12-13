@@ -19,6 +19,7 @@ from astro_api import compatibility_service
 from astro_api.telegram_webapp_auth import validate_init_data, InitDataError
 from astro_bot import openai_client
 from astro_bot import config as bot_config
+from astro_bot import natal_engine
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,11 @@ async def lifespan(app: FastAPI):
     mount_static_if_available(app)
     conn = db.get_connection()
     db.init_db(conn)
+    try:
+        charts_dir = config.get_webapp_dist_dir().parent / "charts"
+        natal_engine.cleanup_old_svgs(charts_dir)
+    except Exception:  # pylint: disable=broad-except
+        logger.warning("Failed to cleanup old charts")
     yield
     # shutdown — nothing special for now
 
@@ -306,6 +312,7 @@ async def compatibility_calc(payload: dict):
         "score": result["score"],
         "top_aspects": result["top_aspects"],
         "key_aspects": result["key_aspects"],
+        "overlays": result.get("overlays"),
         "wheel_url": f"/api/compatibility/{result['id']}/wheel.svg",
     }
 
@@ -317,11 +324,18 @@ async def get_compatibility(comp_id: int):
     row = db.get_compatibility(conn, comp_id)
     if not row:
         return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "compatibility not found"}})
+    overlays = None
+    if row["synastry_json"]:
+        try:
+            overlays = json.loads(row["synastry_json"]).get("overlays")
+        except Exception:  # pylint: disable=broad-except
+            overlays = None
     return {
         "ok": True,
         "synastry": row["synastry_json"],
         "score": row["score_json"],
         "top_aspects": row["top_aspects_json"],
+        "overlays": overlays,
         "wheel_url": f"/api/compatibility/{comp_id}/wheel.svg",
     }
 

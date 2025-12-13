@@ -37,6 +37,30 @@ def build_top_aspects(aspects, limit: int = 20, key_limit: int = 5):
     return top, key_aspects
 
 
+def build_house_overlays(house_comparison):
+    """Extract compact overlays from house comparison."""
+    overlays = {"first_in_second": [], "second_in_first": []}
+    if not house_comparison:
+        return overlays
+    if getattr(house_comparison, "first_points_in_second_houses", None):
+        overlays["first_in_second"] = [
+            {
+                "point": item.get("point"),
+                "house": item.get("house"),
+            }
+            for item in house_comparison.first_points_in_second_houses
+        ]
+    if getattr(house_comparison, "second_points_in_first_houses", None):
+        overlays["second_in_first"] = [
+            {
+                "point": item.get("point"),
+                "house": item.get("house"),
+            }
+            for item in house_comparison.second_points_in_first_houses
+        ]
+    return overlays
+
+
 def calculate_compatibility(
     *,
     conn,
@@ -86,6 +110,7 @@ def calculate_compatibility(
         svg_path = drawer.save_svg(charts_dir / f"compat_{self_subject.julian_day}_{partner_subject.julian_day}.svg")
 
     top_aspects, key_aspects = build_top_aspects(synastry_data.aspects)
+    overlays = build_house_overlays(synastry_data.house_comparison)
     score = None
     if getattr(synastry_data, "relationship_score", None):
         rs = synastry_data.relationship_score
@@ -99,19 +124,20 @@ def calculate_compatibility(
         conn,
         telegram_user_id=None,
         label="Партнер",
-        birth_date=self_date.isoformat(),  # self info
-        birth_time=self_time.isoformat() if self_time else None,
-        time_unknown=self_time is None,
-        place_query=self_place,
-        lat=self_loc.lat,
-        lng=self_loc.lng,
-        tz_str=self_loc.tz_str,
+        birth_date=partner_date.isoformat(),
+        birth_time=partner_time.isoformat() if partner_time else None,
+        time_unknown=partner_time is None,
+        place_query=partner_place,
+        lat=partner_loc.lat,
+        lng=partner_loc.lng,
+        tz_str=partner_loc.tz_str,
     )
 
     synastry_json = json.dumps(
         {
             "aspects": [a.model_dump() for a in synastry_data.aspects],
             "house_comparison": synastry_data.house_comparison.model_dump() if synastry_data.house_comparison else None,
+            "overlays": overlays,
         },
         ensure_ascii=False,
     )
@@ -134,5 +160,6 @@ def calculate_compatibility(
         "score": score,
         "top_aspects": top_aspects,
         "key_aspects": key_aspects,
+        "overlays": overlays,
         "wheel_path": str(svg_path),
     }

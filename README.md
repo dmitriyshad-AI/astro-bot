@@ -70,11 +70,22 @@ Telegram Mini App требует HTTPS-URL; локально можно смот
 - Результат: SVG круг натальной карты + текст (углы, дома, планеты/узлы/астероды, аспекты). При наличии OPENAI_API_KEY дополнительно генерируется интерпретация по фактическим позициям.
 - В Mini App доступны вкладки: основное, планеты, дома, аспекты, инсайты (генерация через OpenAI), wheel (SVG) и “Вопрос по карте” (чат с OpenAI на основе контекста карты).
 - Есть блок “Недавние карты” (берётся из API) и кнопка “Открыть последнюю карту”.
+- Вкладка “Совместимость” — расчёт синстрии по вашим данным и данным партнёра: score, ключевые/топ аспекты, wheel.
 
 ## Самопроверка без Telegram
 - CLI: `python -m astro_bot.debug_natal --date 12.03.1990 --time 08:30 --place "Москва, Россия"`
 - Тесты:
   ```bash
-  python -m unittest tests.test_natal_engine tests.test_init_data_validation tests.test_api_chat_insights
+  python -m unittest tests.test_natal_engine tests.test_init_data_validation tests.test_api_chat_insights tests.test_compatibility_api
   ```
 - Веб auth: `npm run dev` (в webapp) и `uvicorn astro_api.main:app --reload --port 8000`, затем `http://localhost:5173/?debug=1` → вставить initData и нажать Validate.
+
+## Деплой с HTTPS (кратко)
+- Собрать фронт: `cd webapp && npm install && npm run build`.
+- Запуск uvicorn на сервере: `uvicorn astro_api.main:app --host 0.0.0.0 --port 8000` (под systemd/supervisor).
+- Прокси с сертификатом:
+  - вариант A: Nginx + certbot (Let’s Encrypt) на ваш домен, проксируем на http://127.0.0.1:8000;
+  - вариант B: Cloudflare Tunnel с кастомным доменом и готовым HTTPS;
+  - вариант C: ngrok с платным доменом (нужен постоянный https).
+- В `.env` на сервере выставить `WEBAPP_PUBLIC_URL=https://ваш_домен`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, `ASTRO_BOT_USER_AGENT`.
+- Проверить: домен открывается в браузере/iOS Safari; бот `/start` или `/app` открывает Mini App без предупреждений.

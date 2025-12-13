@@ -144,6 +144,13 @@ body {
   border: 1px solid #e2e8f0;
 }
 
+.btn.ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px dashed rgba(108, 123, 255, 0.5);
+  box-shadow: none;
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -355,6 +362,37 @@ body {
   100% { background-position: -200% 0; }
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 20;
+}
+.modal-sheet {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: min(520px, 90%);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-strong);
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 21;
+}
+
+.clickable {
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+}
+
 .chat-list {
   display: flex;
   flex-direction: column;
@@ -396,4 +434,13 @@ body {
 
 .recent-summary {
   font-weight: 700;
+}
+
+.wheel-frame {
+  margin-top: 8px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(108, 123, 255, 0.35);
+  box-shadow: 0 15px 40px rgba(108, 123, 255, 0.15), 0 6px 20px rgba(15, 23, 42, 0.12);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.45));
 }
