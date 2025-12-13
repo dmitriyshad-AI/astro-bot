@@ -24,7 +24,7 @@ WEBAPP_MENU_TEXT_ENV: Final[str] = "WEBAPP_MENU_TEXT"
 
 # Значения по умолчанию
 DEFAULT_DB_PATH: Path = Path(__file__).resolve().parent.parent / "astro_bot.db"
-DEFAULT_OPENAI_MODEL: str = "gpt-4o-mini"
+DEFAULT_OPENAI_MODEL: str = "gpt-5.2"
 DEFAULT_TEMPERATURE: float = 0.7
 DEFAULT_USER_AGENT: str = "astro-bot (contact: set ASTRO_BOT_USER_AGENT)"
 DEFAULT_CHARTS_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "charts"

@@ -83,8 +83,6 @@ let modalVisible = false;
 let onboardingStep = 0;
 let onboardingVisible = false;
 const ONBOARDING_KEY = "astroglass_onboarding_done";
-let modalContent = "";
-let modalVisible = false;
 
 function copyShareText() {
   try {
