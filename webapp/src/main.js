@@ -144,11 +144,37 @@ function parseChart(rawChart) {
       text: `${a.p1_name} — ${a.p2_name}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)`,
     }));
 
+  const planetKeys = ["sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto", "chiron"];
+  const planets = planetKeys
+    .map((k) => subject[k])
+    .filter(Boolean)
+    .map((pt) => `${pt.name}: ${pt.sign} ${pt.position.toFixed(2)}° (дом ${prettyHouse(pt.house)})${pt.retrograde ? " R" : ""}`);
+
   return {
     highlights,
     houses,
     aspects: majorAspects,
+    planets,
   };
+}
+
+function prettyHouse(name) {
+  if (!name) return "-";
+  const mapping = {
+    First_House: "1",
+    Second_House: "2",
+    Third_House: "3",
+    Fourth_House: "4",
+    Fifth_House: "5",
+    Sixth_House: "6",
+    Seventh_House: "7",
+    Eighth_House: "8",
+    Ninth_House: "9",
+    Tenth_House: "10",
+    Eleventh_House: "11",
+    Twelfth_House: "12",
+  };
+  return mapping[name] || name;
 }
 
 function renderResult() {
@@ -172,6 +198,10 @@ function renderChartSections(chart) {
     <div class="section-title">Солнце / Луна / Asc / MC</div>
     <div class="pill-row">
       ${chart.highlights && chart.highlights.length ? chart.highlights.map((h) => `<span class="tag">${h}</span>`).join("") : "<div class='muted-small'>Нет данных</div>"}
+    </div>
+    <div class="section-title">Планеты</div>
+    <div class="list">
+      ${chart.planets && chart.planets.length ? chart.planets.map((p) => `<div>${p}</div>`).join("") : "<div class='muted-small'>Нет данных</div>"}
     </div>
     <div class="section-title">Дома (куспиды)</div>
     <div class="grid">
@@ -236,6 +266,7 @@ function render() {
           <input class="input" id="place" type="text" placeholder="Город, страна" value="${form.place}" />
         </div>
         ${error ? `<div class="error">${error}</div>` : ""}
+        ${loading ? `<div class="loading">Считаю...</div>` : ""}
         <div class="actions">
           <button class="btn" id="continue-btn" ${loading ? "disabled" : ""}>${loading ? "Считаю..." : "Рассчитать"}</button>
         </div>
