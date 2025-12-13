@@ -2,6 +2,7 @@ const tg = window.Telegram?.WebApp;
 if (tg) tg.ready();
 
 const app = document.getElementById("app");
+const STORAGE_KEY = "astroglass_last_chart";
 
 function showToast(message) {
   let toast = document.querySelector(".toast");
@@ -41,6 +42,30 @@ let loading = false;
 let error = "";
 let result = null;
 let chartDetails = null;
+let placeSuggestions = [];
+let placeLoading = false;
+let currentTab = "highlights";
+let insightsLoading = false;
+let insightsText = "";
+let askText = "";
+let askLoading = false;
+let chatHistory = [];
+let lastChart = loadLastChart();
+
+if (lastChart) {
+  result = lastChart.result;
+  chartDetails = lastChart.chartDetails;
+  insightsText = lastChart.insightsText || "";
+  chatHistory = lastChart.chatHistory || [];
+}
+
+function debounce(fn, delay = 300) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), delay);
+  };
+}
 
 async function fetchWhoAmI(initData) {
   try {
@@ -61,16 +86,61 @@ async function fetchWhoAmI(initData) {
   }
 }
 
+function validateForm() {
+  const dateRe = /^\d{2}\.\d{2}\.\d{4}$/;
+  if (!dateRe.test(form.birth_date)) return "Дата должна быть в формате ДД.ММ.ГГГГ";
+  if (form.birth_time && !/^\d{2}:\d{2}$/.test(form.birth_time)) return "Время должно быть ЧЧ:ММ или оставьте пустым";
+  if (!form.place) return "Укажите место рождения";
+  return "";
+}
+
+const doPlaceSuggest = debounce(async (query) => {
+  if (!query || query.length < 2) {
+    placeSuggestions = [];
+    placeLoading = false;
+    render();
+    return;
+  }
+  placeLoading = true;
+  render();
+  try {
+    const res = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if (data.ok) {
+      placeSuggestions = [
+        {
+          display_name: data.location.display_name,
+        },
+      ];
+    } else {
+      placeSuggestions = [];
+    }
+  } catch {
+    placeSuggestions = [];
+  } finally {
+    placeLoading = false;
+    render();
+  }
+}, 400);
+
 async function submitForm() {
   error = "";
+  const validationError = validateForm();
+  if (validationError) {
+    error = validationError;
+    render();
+    return;
+  }
   loading = true;
   result = null;
   chartDetails = null;
+  insightsText = "";
+  chatHistory = [];
+  askText = "";
+  askLoading = false;
+  insightsLoading = false;
   render();
   try {
-    if (!form.birth_date || !form.place) {
-      throw new Error("Заполните дату и место.");
-    }
     const payload = {
       birth_date: form.birth_date,
       birth_time: form.birth_time || null,
@@ -86,10 +156,63 @@ async function submitForm() {
     if (!data.ok) throw new Error(data.error?.message || "Ошибка расчёта");
     result = data;
     chartDetails = parseChart(data.chart);
+    saveLastChart(result, chartDetails, insightsText, chatHistory);
   } catch (e) {
     error = e.message || "Ошибка запроса";
   } finally {
     loading = false;
+    render();
+  }
+}
+
+async function fetchInsights() {
+  if (!result?.chart_id) {
+    showToast("Сначала рассчитайте карту");
+    return;
+  }
+  insightsLoading = true;
+  render();
+  try {
+    const res = await fetch(`/api/insights/${result.chart_id}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error?.message || "Не удалось получить инсайты");
+    insightsText = data.insights || "";
+    saveLastChart(result, chartDetails, insightsText, chatHistory);
+    if (!insightsText) showToast("Инсайты пока пустые");
+  } catch (e) {
+    showToast(e.message || "Ошибка инсайтов");
+  } finally {
+    insightsLoading = false;
+    render();
+  }
+}
+
+async function sendQuestion() {
+  if (!result?.chart_id) {
+    showToast("Сначала рассчитайте карту");
+    return;
+  }
+  if (!askText.trim()) {
+    showToast("Введите вопрос");
+    return;
+  }
+  askLoading = true;
+  render();
+  try {
+    const res = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chart_id: result.chart_id, question: askText.trim() }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error?.message || "Ошибка ответа");
+    chatHistory = data.history || [...chatHistory, { question: askText.trim(), answer: data.answer }];
+    askText = "";
+    saveLastChart(result, chartDetails, insightsText, chatHistory);
+  } catch (e) {
+    showToast(e.message || "Ошибка запроса");
+  } finally {
+    askLoading = false;
     render();
   }
 }
@@ -177,6 +300,27 @@ function prettyHouse(name) {
   return mapping[name] || name;
 }
 
+function renderTabs() {
+  const tabs = [
+    { id: "highlights", label: "Основное" },
+    { id: "planets", label: "Планеты" },
+    { id: "houses", label: "Дома" },
+    { id: "aspects", label: "Аспекты" },
+    { id: "insights", label: "Инсайты" },
+    { id: "chat", label: "Вопрос" },
+    { id: "wheel", label: "Wheel" },
+  ];
+  return `
+    <div class="tabs">
+      ${tabs
+        .map(
+          (t) => `<button class="tab ${currentTab === t.id ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderResult() {
   if (!result) return "";
   const wheelLink = result.wheel_url || "";
@@ -184,38 +328,77 @@ function renderResult() {
   return `
     <div class="card" style="margin-top:12px;">
       <div class="muted" style="margin-bottom:8px;">Результат</div>
+      ${renderTabs()}
       <div class="list">
-        <div><strong>Summary:</strong> ${result.summary ? result.summary.split("\\n")[0] : "—"}</div>
-        <div><strong>Wheel:</strong> <a class="link" href="${wheelLink}" target="_blank">Скачать SVG</a></div>
+        ${renderTabContent(chart, wheelLink)}
       </div>
-      ${chart ? renderChartSections(chart) : ""}
+      ${currentTab === "insights" ? renderInsightsButton() : ""}
     </div>
   `;
 }
 
-function renderChartSections(chart) {
-  return `
-    <div class="section-title">Солнце / Луна / Asc / MC</div>
-    <div class="pill-row">
-      ${chart.highlights && chart.highlights.length ? chart.highlights.map((h) => `<span class="tag">${h}</span>`).join("") : "<div class='muted-small'>Нет данных</div>"}
-    </div>
-    <div class="section-title">Планеты</div>
-    <div class="list">
-      ${chart.planets && chart.planets.length ? chart.planets.map((p) => `<div>${p}</div>`).join("") : "<div class='muted-small'>Нет данных</div>"}
-    </div>
-    <div class="section-title">Дома (куспиды)</div>
-    <div class="grid">
-      ${chart.houses && chart.houses.length ? chart.houses.map((h) => `<div class="tag">Дом ${h.num}: ${h.sign} ${h.pos.toFixed(2)}°</div>`).join("") : "<div class='muted-small'>Нет данных</div>"}
-    </div>
-    <div class="section-title">Основные аспекты</div>
-    <div class="list">
-      ${
-        chart.aspects && chart.aspects.length
-          ? chart.aspects.map((a) => `<div>${a.text}</div>`).join("")
-          : "<div class='muted-small'>Нет аспектов</div>"
-      }
-    </div>
-  `;
+function renderTabContent(chart, wheelLink) {
+  if (currentTab === "wheel") {
+    return wheelLink
+      ? `<div class="section-title">SVG wheel</div><div style="margin-top:8px; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0;"><object data="${wheelLink}" type="image/svg+xml" style="width:100%; min-height:320px;"></object></div>`
+      : "<div class='muted-small'>Нет SVG</div>";
+  }
+  if (currentTab === "insights") {
+    if (insightsLoading) return "<div class='muted-small'>Генерирую инсайты...</div>";
+    if (insightsText) return `<div class="list"><div>${insightsText.replace(/\n/g, "<br/>")}</div></div>`;
+    return "<div class='muted-small'>Нет инсайтов. Нажмите 'Сгенерировать инсайты'.</div>";
+  }
+  if (currentTab === "chat") {
+    const historyHtml =
+      chatHistory && chatHistory.length
+        ? chatHistory
+            .map(
+              (m) => `
+            <div class="chat-item">
+              <div class="chat-q">Вопрос: ${m.question}</div>
+              <div class="chat-a">Ответ: ${m.answer || ""}</div>
+            </div>`
+            )
+            .join("")
+        : "<div class='muted-small'>Пока нет вопросов.</div>";
+    return `
+      <div class="field">
+        <label for="ask">Вопрос по карте</label>
+        <textarea class="input" id="ask" placeholder="Задайте вопрос" rows="3">${askText}</textarea>
+      </div>
+      <div class="actions">
+        <button class="btn" id="ask-btn" ${askLoading ? "disabled" : ""}>${askLoading ? "Отправляю..." : "Спросить"}</button>
+      </div>
+      <div class="section-title">История</div>
+      <div class="list chat-list">${historyHtml}</div>
+    `;
+  }
+  if (!chart) return "<div class='muted-small'>Нет данных</div>";
+  if (currentTab === "highlights") {
+    return `
+      <div><strong>Summary:</strong> ${result.summary ? result.summary.split("\\n")[0] : "—"}</div>
+      <div class="section-title">Солнце / Луна / Asc / MC</div>
+      <div class="pill-row">
+        ${chart.highlights && chart.highlights.length ? chart.highlights.map((h) => `<span class="tag">${h}</span>`).join("") : "<div class='muted-small'>Нет данных</div>"}
+      </div>
+    `;
+  }
+  if (currentTab === "planets") {
+    return chart.planets && chart.planets.length
+      ? chart.planets.map((p) => `<div>${p}</div>`).join("")
+      : "<div class='muted-small'>Нет данных</div>";
+  }
+  if (currentTab === "houses") {
+    return chart.houses && chart.houses.length
+      ? chart.houses.map((h) => `<div class="tag">Дом ${h.num}: ${h.sign} ${h.pos.toFixed(2)}°</div>`).join("")
+      : "<div class='muted-small'>Нет данных</div>";
+  }
+  if (currentTab === "aspects") {
+    return chart.aspects && chart.aspects.length
+      ? chart.aspects.map((a) => `<div>${a.text}</div>`).join("")
+      : "<div class='muted-small'>Нет аспектов</div>";
+  }
+  return "";
 }
 
 function renderDebugBlock() {
@@ -230,6 +413,41 @@ function renderDebugBlock() {
       </div>
     </div>
   `;
+}
+
+function renderInsightsButton() {
+  if (!result?.chart_id) return "";
+  const label = insightsLoading ? "Генерирую..." : insightsText ? "Обновить инсайты" : "Сгенерировать инсайты";
+  return `
+    <div class="actions" style="margin-top:12px;">
+      <button class="btn" id="insights-btn" ${insightsLoading ? "disabled" : ""}>${label}</button>
+    </div>
+  `;
+}
+
+function saveLastChart(res, chart, insights, chat) {
+  try {
+    if (!res) {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ result: res, chartDetails: chart, insightsText: insights || "", chatHistory: chat || [] })
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadLastChart() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 function render() {
@@ -254,7 +472,7 @@ function render() {
         <div class="row">
           <div class="field">
             <label for="birth_time">Время</label>
-            <input class="input" id="birth_time" type="text" placeholder="ЧЧ:ММ или не знаю" value="${form.birth_time}" />
+            <input class="input" id="birth_time" type="text" placeholder="ЧЧ:ММ или пусто" value="${form.birth_time}" />
           </div>
           <div class="field">
             <label>&nbsp;</label>
@@ -264,11 +482,20 @@ function render() {
         <div class="field">
           <label for="place">Место рождения</label>
           <input class="input" id="place" type="text" placeholder="Город, страна" value="${form.place}" />
+          ${placeLoading ? '<div class="muted-small"><span class="spinner"></span> Поиск...</div>' : ""}
+          ${
+            placeSuggestions && placeSuggestions.length
+              ? `<div class="suggestions">${placeSuggestions
+                  .map((s, idx) => `<div data-sidx="${idx}">${s.display_name}</div>`)
+                  .join("")}</div>`
+              : ""
+          }
         </div>
         ${error ? `<div class="error">${error}</div>` : ""}
         ${loading ? `<div class="loading">Считаю...</div>` : ""}
         <div class="actions">
           <button class="btn" id="continue-btn" ${loading ? "disabled" : ""}>${loading ? "Считаю..." : "Рассчитать"}</button>
+          <button class="btn secondary" id="clear-btn">Очистить</button>
         </div>
       </div>
       ${renderResult()}
@@ -282,6 +509,57 @@ function render() {
     form.birth_time = document.getElementById("birth_time").value.trim();
     form.place = document.getElementById("place").value.trim();
     submitForm();
+  });
+
+  document.getElementById("clear-btn")?.addEventListener("click", () => {
+    form = { birth_date: "", birth_time: "", place: "" };
+    error = "";
+    result = null;
+    chartDetails = null;
+    placeSuggestions = [];
+    insightsText = "";
+    insightsLoading = false;
+    chatHistory = [];
+    askText = "";
+    askLoading = false;
+    saveLastChart(null, null, null, null);
+    render();
+  });
+
+  document.getElementById("place")?.addEventListener("input", (e) => {
+    form.place = e.target.value;
+    doPlaceSuggest(form.place);
+  });
+
+  document.getElementById("birth_date")?.addEventListener("input", (e) => {
+    form.birth_date = e.target.value;
+  });
+  document.getElementById("birth_time")?.addEventListener("input", (e) => {
+    form.birth_time = e.target.value;
+  });
+  document.getElementById("ask")?.addEventListener("input", (e) => {
+    askText = e.target.value;
+  });
+
+  document.querySelectorAll(".suggestions div")?.forEach((el) => {
+    el.addEventListener("click", () => {
+      const idx = Number(el.dataset.sidx);
+      if (!Number.isNaN(idx) && placeSuggestions[idx]) {
+        form.place = placeSuggestions[idx].display_name;
+        placeSuggestions = [];
+        render();
+      }
+    });
+  });
+
+  document.querySelectorAll(".tab")?.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      if (tab) {
+        currentTab = tab;
+        render();
+      }
+    });
   });
 
   const debugBtn = document.getElementById("debug-validate");
@@ -301,6 +579,9 @@ function render() {
       }
     });
   }
+
+  document.getElementById("insights-btn")?.addEventListener("click", fetchInsights);
+  document.getElementById("ask-btn")?.addEventListener("click", sendQuestion);
 }
 
 render();

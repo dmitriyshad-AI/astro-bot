@@ -75,6 +75,36 @@ def calculate_natal_chart(
     birth_time = natal_engine.parse_birth_time(birth_time_str)
     location = resolve_location(conn, place_query)
 
+    # Check for existing profile/chart
+    existing_profile = db.find_profile(
+        conn,
+        telegram_user_id=telegram_user_id,
+        birth_date=birth_date.isoformat(),
+        birth_time=birth_time.isoformat() if birth_time else None,
+        time_unknown=birth_time is None,
+        place_query=place_query,
+        lat=location.lat,
+        lng=location.lng,
+        tz_str=location.tz_str,
+    )
+    if existing_profile:
+        chart_row = db.get_latest_chart_for_profile(conn, existing_profile["id"])
+        if chart_row:
+            return {
+                "chart_id": chart_row["id"],
+                "profile_id": existing_profile["id"],
+                "summary": chart_row["summary"] or "",
+                "context_text": "",
+                "wheel_path": chart_row["wheel_path"],
+                "chart": json.loads(chart_row["chart_json"]),
+                "location": {
+                    "display_name": location.display_name,
+                    "lat": location.lat,
+                    "lng": location.lng,
+                    "tz_str": location.tz_str,
+                },
+            }
+
     # Build subject and chart data under lock inside natal_engine
     subject = natal_engine.build_subject(
         name=user_identifier,
@@ -109,6 +139,7 @@ def calculate_natal_chart(
         profile_id=profile_id,
         chart_json=chart_json,
         wheel_path=str(svg_path),
+        summary=summary,
     )
 
     return {

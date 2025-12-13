@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Optional
+import json
 
 from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
@@ -12,7 +13,9 @@ from fastapi.staticfiles import StaticFiles
 
 from astro_api import config, db
 from astro_api import natal_service
+from astro_api import insights_service
 from astro_api.telegram_webapp_auth import validate_init_data, InitDataError
+from astro_bot import openai_client
 
 logger = logging.getLogger(__name__)
 
@@ -232,3 +235,81 @@ async def get_wheel(chart_id: int):
     if not wheel_path.exists():
         return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "wheel file missing"}})
     return FileResponse(wheel_path, media_type="image/svg+xml")
+
+
+@app.get("/api/insights/{chart_id}")
+async def get_insights(chart_id: int):
+    """Generate insights for chart via OpenAI."""
+    if not config.get_openai_api_key():
+        return JSONResponse(status_code=500, content={"ok": False, "error": {"code": "server_misconfigured", "message": "OPENAI_API_KEY not set"}})
+    conn = db.get_connection()
+    db.init_db(conn)
+    row = db.get_chart(conn, chart_id)
+    if not row or not row["chart_json"]:
+        return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "chart not found"}})
+    chart_payload = None
+    if row["chart_json"]:
+        try:
+            chart_payload = json.loads(row["chart_json"]) if isinstance(row["chart_json"], str) else row["chart_json"]
+        except Exception:  # pylint: disable=broad-except
+            logger.warning("Failed to parse chart_json for chart_id=%s", chart_id)
+
+    context_text = insights_service.build_context_from_chart(chart_payload)
+    if not context_text:
+        context_text = row["summary"] or "Натальная карта"
+    try:
+        insights = insights_service.generate_insights(context_text)
+    except Exception as exc:  # pylint: disable=broad-except
+        return JSONResponse(status_code=500, content={"ok": False, "error": {"code": "insight_error", "message": str(exc)}})
+    return {"ok": True, "insights": insights.get("insights_text")}
+
+
+@app.post("/api/ask")
+async def ask_question(payload: dict):
+    """Answer a user question based on stored chart context."""
+    if not config.get_openai_api_key():
+        return JSONResponse(status_code=500, content={"ok": False, "error": {"code": "server_misconfigured", "message": "OPENAI_API_KEY not set"}})
+    question = payload.get("question")
+    chart_id = payload.get("chart_id")
+    if not question or not chart_id:
+        return JSONResponse(status_code=400, content={"ok": False, "error": {"code": "missing_field", "message": "chart_id and question are required"}})
+
+    conn = db.get_connection()
+    db.init_db(conn)
+    row = db.get_chart(conn, int(chart_id))
+    if not row or not row["chart_json"]:
+        return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "chart not found"}})
+
+    chart_payload = None
+    if row["chart_json"]:
+        try:
+            chart_payload = json.loads(row["chart_json"]) if isinstance(row["chart_json"], str) else row["chart_json"]
+        except Exception:  # pylint: disable=broad-except
+            chart_payload = None
+
+    context_text = insights_service.build_context_from_chart(chart_payload)
+    if not context_text:
+        context_text = row["summary"] or "Натальная карта"
+
+    prompt = (
+        "Ты профессиональный астролог. Ответь на вопрос пользователя, опираясь только на данные натальной карты.\n"
+        "Не придумывай новые позиции, используй факты ниже.\n\n"
+        f"Натальная карта:\n{context_text}\n\n"
+        f"Вопрос: {question}\nОтвет:"
+    )
+    try:
+        answer = openai_client.ask_gpt(prompt, role="астролог")
+    except Exception as exc:  # pylint: disable=broad-except
+        return JSONResponse(status_code=500, content={"ok": False, "error": {"code": "ask_error", "message": str(exc)}})
+
+    try:
+        db.insert_chat_message(conn, chart_id=int(chart_id), question=question, answer=answer)
+    except Exception:  # pylint: disable=broad-except
+        logger.warning("Failed to persist chat message for chart_id=%s", chart_id)
+
+    history_rows = db.list_chat_messages(conn, chart_id=int(chart_id), limit=20) or []
+    history = [
+        {"question": r["question"], "answer": r["answer"], "created_at": r["created_at"]}
+        for r in reversed(history_rows)
+    ]
+    return {"ok": True, "answer": answer, "history": history}

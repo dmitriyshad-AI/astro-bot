@@ -77,8 +77,21 @@ def init_db(conn: sqlite3.Connection) -> None:
             profile_id INTEGER,
             chart_json TEXT,
             wheel_path TEXT,
+            summary TEXT,
             created_at TEXT,
             FOREIGN KEY(profile_id) REFERENCES profiles(id)
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chart_id INTEGER NOT NULL,
+            question TEXT NOT NULL,
+            answer TEXT,
+            created_at TEXT,
+            FOREIGN KEY(chart_id) REFERENCES charts(id)
         );
         """
     )
@@ -198,14 +211,15 @@ def insert_chart(
     profile_id: int,
     chart_json: str,
     wheel_path: str,
+    summary: str | None,
 ) -> int:
     now = datetime.utcnow().isoformat()
     cur = conn.execute(
         """
-        INSERT INTO charts (profile_id, chart_json, wheel_path, created_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO charts (profile_id, chart_json, wheel_path, summary, created_at)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (profile_id, chart_json, wheel_path, now),
+        (profile_id, chart_json, wheel_path, summary, now),
     )
     conn.commit()
     return cur.lastrowid
@@ -213,3 +227,77 @@ def insert_chart(
 
 def get_chart(conn: sqlite3.Connection, chart_id: int):
     return conn.execute("SELECT * FROM charts WHERE id = ?", (chart_id,)).fetchone()
+
+
+def find_profile(
+    conn: sqlite3.Connection,
+    *,
+    telegram_user_id: int | None,
+    birth_date: str,
+    birth_time: str | None,
+    time_unknown: bool,
+    place_query: str,
+    lat: float,
+    lng: float,
+    tz_str: str,
+):
+    return conn.execute(
+        """
+        SELECT * FROM profiles
+        WHERE
+            (telegram_user_id IS ? OR telegram_user_id = ?)
+            AND birth_date = ?
+            AND birth_time IS ?
+            AND time_unknown = ?
+            AND place_query = ?
+            AND lat = ?
+            AND lng = ?
+            AND tz_str = ?
+        """,
+        (
+            telegram_user_id,
+            telegram_user_id,
+            birth_date,
+            birth_time,
+            int(time_unknown),
+            place_query,
+            lat,
+            lng,
+            tz_str,
+        ),
+    ).fetchone()
+
+
+def get_latest_chart_for_profile(conn: sqlite3.Connection, profile_id: int):
+    return conn.execute(
+        "SELECT * FROM charts WHERE profile_id = ? ORDER BY created_at DESC LIMIT 1",
+        (profile_id,),
+    ).fetchone()
+
+
+def insert_chat_message(conn: sqlite3.Connection, *, chart_id: int, question: str, answer: str | None) -> int:
+    """Store chat Q/A for a chart."""
+    now = datetime.utcnow().isoformat()
+    cur = conn.execute(
+        """
+        INSERT INTO chat_messages (chart_id, question, answer, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (chart_id, question, answer, now),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_chat_messages(conn: sqlite3.Connection, *, chart_id: int, limit: int = 20):
+    """Return recent chat messages for chart."""
+    return conn.execute(
+        """
+        SELECT question, answer, created_at
+        FROM chat_messages
+        WHERE chart_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (chart_id, limit),
+    ).fetchall()
