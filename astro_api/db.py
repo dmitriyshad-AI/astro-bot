@@ -40,6 +40,48 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS geo_cache (
+            query TEXT PRIMARY KEY,
+            lat REAL NOT NULL,
+            lng REAL NOT NULL,
+            tz_str TEXT NOT NULL,
+            display_name TEXT,
+            updated_at TEXT
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_user_id INTEGER,
+            label TEXT,
+            birth_date TEXT,
+            birth_time TEXT,
+            time_unknown INTEGER,
+            place_query TEXT,
+            lat REAL,
+            lng REAL,
+            tz_str TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS charts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_id INTEGER,
+            chart_json TEXT,
+            wheel_path TEXT,
+            created_at TEXT,
+            FOREIGN KEY(profile_id) REFERENCES profiles(id)
+        );
+        """
+    )
     conn.commit()
 
 
@@ -72,3 +114,102 @@ def upsert_user(conn: sqlite3.Connection, user: dict) -> None:
         },
     )
     conn.commit()
+
+
+def get_cached_location(conn: sqlite3.Connection, query: str):
+    """Get cached geo result."""
+    return conn.execute(
+        "SELECT query, lat, lng, tz_str, display_name FROM geo_cache WHERE query = ?",
+        (query,),
+    ).fetchone()
+
+
+def upsert_cached_location(
+    conn: sqlite3.Connection,
+    *,
+    query: str,
+    lat: float,
+    lng: float,
+    tz_str: str,
+    display_name: str,
+) -> None:
+    """Upsert geo result."""
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        """
+        INSERT INTO geo_cache (query, lat, lng, tz_str, display_name, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(query) DO UPDATE SET
+            lat=excluded.lat,
+            lng=excluded.lng,
+            tz_str=excluded.tz_str,
+            display_name=excluded.display_name,
+            updated_at=excluded.updated_at
+        """,
+        (query, lat, lng, tz_str, display_name, now),
+    )
+    conn.commit()
+
+
+def insert_profile(
+    conn: sqlite3.Connection,
+    *,
+    telegram_user_id: int | None,
+    label: str | None,
+    birth_date: str,
+    birth_time: str | None,
+    time_unknown: bool,
+    place_query: str,
+    lat: float,
+    lng: float,
+    tz_str: str,
+) -> int:
+    """Insert profile and return id."""
+    now = datetime.utcnow().isoformat()
+    cur = conn.execute(
+        """
+        INSERT INTO profiles (
+            telegram_user_id, label, birth_date, birth_time, time_unknown,
+            place_query, lat, lng, tz_str, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            telegram_user_id,
+            label,
+            birth_date,
+            birth_time,
+            int(time_unknown),
+            place_query,
+            lat,
+            lng,
+            tz_str,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def insert_chart(
+    conn: sqlite3.Connection,
+    *,
+    profile_id: int,
+    chart_json: str,
+    wheel_path: str,
+) -> int:
+    now = datetime.utcnow().isoformat()
+    cur = conn.execute(
+        """
+        INSERT INTO charts (profile_id, chart_json, wheel_path, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (profile_id, chart_json, wheel_path, now),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_chart(conn: sqlite3.Connection, chart_id: int):
+    return conn.execute("SELECT * FROM charts WHERE id = ?", (chart_id,)).fetchone()

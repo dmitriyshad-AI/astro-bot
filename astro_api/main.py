@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from astro_api import config, db
+from astro_api import natal_service
 from astro_api.telegram_webapp_auth import validate_init_data, InitDataError
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,8 @@ async def serve_root():
 @app.on_event("startup")
 async def on_startup() -> None:
     mount_static_if_available(app)
+    conn = db.get_connection()
+    db.init_db(conn)
 
 
 def get_init_data_from_request(request: Request, auth_header: Optional[str]) -> Optional[str]:
@@ -137,3 +140,95 @@ async def whoami(request: Request, authorization: Optional[str] = Header(None)):
         "auth_date": validated["auth_date"],
         "is_fresh": validated["is_fresh"],
     }
+
+
+@app.get("/api/geo/search")
+async def geo_search(q: Optional[str] = None):
+    """Geocoding endpoint with cache."""
+    if not q:
+        return JSONResponse(status_code=400, content={"ok": False, "error": {"code": "missing_query", "message": "q is required"}})
+    conn = db.get_connection()
+    db.init_db(conn)
+    try:
+        location = natal_service.resolve_location(conn, q)
+    except Exception as exc:  # pylint: disable=broad-except
+        return JSONResponse(status_code=500, content={"ok": False, "error": {"code": "geo_error", "message": str(exc)}})
+    return {
+        "ok": True,
+        "location": {
+            "query": location.query,
+            "display_name": location.display_name,
+            "lat": location.lat,
+            "lng": location.lng,
+            "tz_str": location.tz_str,
+        },
+    }
+
+
+@app.post("/api/natal/calc")
+async def natal_calc(payload: dict):
+    """Calculate natal chart and return ids + summary."""
+    required = ["birth_date", "place"]
+    for key in required:
+        if key not in payload:
+            return JSONResponse(status_code=400, content={"ok": False, "error": {"code": "missing_field", "message": f"{key} is required"}})
+
+    birth_date = payload.get("birth_date")
+    birth_time = payload.get("birth_time")
+    place = payload.get("place")
+    telegram_user_id = payload.get("telegram_user_id")
+    label = payload.get("label")
+
+    conn = db.get_connection()
+    db.init_db(conn)
+    try:
+        result = natal_service.calculate_natal_chart(
+            conn=conn,
+            birth_date_str=birth_date,
+            birth_time_str=birth_time,
+            place_query=place,
+            user_identifier=str(telegram_user_id or "guest"),
+            charts_dir=config.get_webapp_dist_dir().parent / "charts",
+            telegram_user_id=telegram_user_id,
+            label=label,
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": {"code": "calc_error", "message": str(exc)}},
+        )
+
+    wheel_url = f"/api/natal/{result['chart_id']}/wheel.svg"
+    return {
+        "ok": True,
+        "chart_id": result["chart_id"],
+        "profile_id": result["profile_id"],
+        "summary": result["summary"],
+        "wheel_url": wheel_url,
+        "chart": result["chart"],
+        "location": result["location"],
+    }
+
+
+@app.get("/api/natal/{chart_id}")
+async def get_chart(chart_id: int):
+    """Return stored chart JSON."""
+    conn = db.get_connection()
+    db.init_db(conn)
+    row = db.get_chart(conn, chart_id)
+    if not row:
+        return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "chart not found"}})
+    return {"ok": True, "chart": row["chart_json"], "wheel_url": f"/api/natal/{chart_id}/wheel.svg"}
+
+
+@app.get("/api/natal/{chart_id}/wheel.svg")
+async def get_wheel(chart_id: int):
+    conn = db.get_connection()
+    db.init_db(conn)
+    row = db.get_chart(conn, chart_id)
+    if not row or not row["wheel_path"]:
+        return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "wheel not found"}})
+    wheel_path = Path(row["wheel_path"])
+    if not wheel_path.exists():
+        return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "wheel file missing"}})
+    return FileResponse(wheel_path, media_type="image/svg+xml")
