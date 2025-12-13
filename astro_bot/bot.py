@@ -6,7 +6,14 @@ import logging
 import sys
 from typing import Optional
 
-from telegram import Update, BotCommand
+from telegram import (
+    Update,
+    BotCommand,
+    WebAppInfo,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    MenuButtonWebApp,
+)
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -26,6 +33,7 @@ NATAL_DATE, NATAL_TIME, NATAL_PLACE = range(2, 5)
 BOT_COMMANDS = [
     BotCommand("start", "Приветствие"),
     BotCommand("help", "Список команд"),
+    BotCommand("app", "Открыть AstroGlass"),
     BotCommand("ask", "Спросить астролога"),
     BotCommand("natal", "Ввести данные рождения"),
     BotCommand("history", "Последние запросы"),
@@ -44,9 +52,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• /natal — ввести дату/время/место рождения для разбора\n"
         "• повторять обычные сообщения (echo)\n"
         "• /history — показать последние запросы\n"
+        "• /app — открыть AstroGlass (Mini App)\n"
         "Если что — /help подскажет команды."
     )
     await update.message.reply_text(greeting)
+    await send_webapp_button(update, context)
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -55,6 +65,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "/start — приветствие\n"
         "/help — список команд\n"
+        "/app — открыть Mini App\n"
         "/ask — задать вопрос (OpenAI)\n"
         "/natal — ввести данные рождения\n"
         "/history — показать последние запросы"
@@ -286,9 +297,26 @@ async def natal_place(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 
 async def set_commands(application: Application) -> None:
-    """Установить меню команд в Telegram."""
+    """Установить меню команд в Telegram и кнопку WebApp, если URL задан."""
     await application.bot.set_my_commands(BOT_COMMANDS)
     logger.info("Команды бота обновлены: %s", [cmd.command for cmd in BOT_COMMANDS])
+
+    url, warn = describe_webapp_url()
+    if not url:
+        logger.info("WEBAPP_PUBLIC_URL не задан, кнопку меню WebApp не устанавливаем.")
+        return
+    if warn:
+        logger.warning(warn)
+    try:
+        await application.bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text=config.get_webapp_menu_text(),
+                web_app=WebAppInfo(url=url),
+            )
+        )
+        logger.info("Кнопка меню WebApp установлена.")
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("Не удалось установить кнопку меню WebApp: %s", exc)
 
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Вывести последние N запросов пользователя."""
@@ -333,6 +361,11 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("\n".join(lines))
 
 
+async def open_app(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда /app — отправить кнопку открытия WebApp."""
+    await send_webapp_button(update, context)
+
+
 def ensure_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Optional[int]:
     """Создать или обновить пользователя в базе."""
     tg_user = update.effective_user
@@ -370,9 +403,61 @@ def chunk_text(text: str, max_len: int = 3500) -> list[str]:
     return chunks
 
 
+def build_webapp_markup(url: str) -> InlineKeyboardMarkup:
+    """Собрать inline-клавиатуру для открытия WebApp."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    text=config.get_webapp_menu_text(),
+                    web_app=WebAppInfo(url=url),
+                )
+            ]
+        ]
+    )
+
+
+def describe_webapp_url() -> tuple[Optional[str], Optional[str]]:
+    """Вернуть (url, warning) если url задан, но не https."""
+    url = config.get_webapp_url()
+    if not url:
+        return None, None
+    warning = None
+    if not url.startswith("https://"):
+        warning = "Для Mini App нужен HTTPS URL. Текущий URL не https, в Telegram может не открыться."
+    return url, warning
+
+
+async def send_webapp_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Отправить кнопку WebApp или подсказку о настройке URL."""
+    if update.message is None:
+        return
+    url, warning = describe_webapp_url()
+    if not url:
+        await update.message.reply_text(
+            "WEBAPP_PUBLIC_URL не настроен. Установите переменную окружения "
+            "WEBAPP_PUBLIC_URL на ваш HTTPS URL Mini App."
+        )
+        return
+    if warning:
+        await update.message.reply_text(f"{warning}\nURL: {url}")
+    await update.message.reply_text(
+        "Открыть AstroGlass:",
+        reply_markup=build_webapp_markup(url),
+    )
+
+
 def run_bot(token: str) -> None:
     """Инициализировать приложение и запустить бота."""
     config.setup_logging()
+    url, warn = describe_webapp_url()
+    if url:
+        logger.info("WEBAPP_PUBLIC_URL: %s", url)
+        if warn:
+            logger.warning(warn)
+    else:
+        logger.info("WEBAPP_PUBLIC_URL не задан, кнопка WebApp показывать не будем.")
+
     application: Application = (
         ApplicationBuilder()
         .token(token)
@@ -402,6 +487,7 @@ def run_bot(token: str) -> None:
             fallbacks=[CommandHandler("cancel", cancel)],
         )
     )
+    application.add_handler(CommandHandler("app", open_app))
     application.add_handler(
         ConversationHandler(
             entry_points=[CommandHandler("natal", natal_start)],

@@ -19,6 +19,8 @@ OPENAI_MODEL_ENV: Final[str] = "OPENAI_MODEL"
 OPENAI_TEMPERATURE_ENV: Final[str] = "OPENAI_TEMPERATURE"
 NOMINATIM_USER_AGENT_ENV: Final[str] = "ASTRO_BOT_USER_AGENT"
 CHARTS_DIR_ENV: Final[str] = "ASTRO_BOT_CHARTS_DIR"
+WEBAPP_PUBLIC_URL_ENV: Final[str] = "WEBAPP_PUBLIC_URL"
+WEBAPP_MENU_TEXT_ENV: Final[str] = "WEBAPP_MENU_TEXT"
 
 # Значения по умолчанию
 DEFAULT_DB_PATH: Path = Path(__file__).resolve().parent.parent / "astro_bot.db"
@@ -26,6 +28,7 @@ DEFAULT_OPENAI_MODEL: str = "gpt-4o-mini"
 DEFAULT_TEMPERATURE: float = 0.7
 DEFAULT_USER_AGENT: str = "astro-bot (contact: set ASTRO_BOT_USER_AGENT)"
 DEFAULT_CHARTS_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "charts"
+DEFAULT_WEBAPP_MENU_TEXT: str = "Открыть AstroGlass"
 
 
 def get_bot_token() -> Optional[str]:
@@ -73,6 +76,17 @@ def get_charts_dir() -> Path:
     if env_value:
         return Path(env_value).expanduser()
     return DEFAULT_CHARTS_DIR
+
+
+def get_webapp_url() -> Optional[str]:
+    """URL публичного WebApp (должен быть HTTPS для Telegram)."""
+    url = os.getenv(WEBAPP_PUBLIC_URL_ENV)
+    return url if url else None
+
+
+def get_webapp_menu_text() -> str:
+    """Текст кнопки для открытия WebApp."""
+    return os.getenv(WEBAPP_MENU_TEXT_ENV, DEFAULT_WEBAPP_MENU_TEXT)
 
 
 def setup_logging() -> None:
