@@ -79,6 +79,7 @@ if (lastChart) {
   chartDetails = lastChart.chartDetails;
   insightsText = lastChart.insightsText || "";
   chatHistory = lastChart.chatHistory || [];
+  preloadCompatFromChart(result?.chart);
 }
 
 function debounce(fn, delay = 300) {
@@ -102,6 +103,21 @@ function formatTimeInput(raw) {
   const digits = raw.replace(/\D/g, "").slice(0, 4);
   if (digits.length <= 2) return digits;
   return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+}
+
+function preloadCompatFromChart(rawChart) {
+  if (!rawChart) return;
+  let chartObj = rawChart;
+  if (typeof rawChart === "string") {
+    try {
+      chartObj = JSON.parse(rawChart);
+    } catch {
+      return;
+    }
+  }
+  if (chartObj.birth_date) compatForm.self_date = chartObj.birth_date.split("-").reverse().join(".");
+  if (chartObj.birth_time) compatForm.self_time = chartObj.birth_time.slice(0, 5);
+  if (chartObj.location?.display_name) compatForm.self_place = chartObj.location.display_name;
 }
 
 async function fetchWhoAmI(initData) {
@@ -201,6 +217,7 @@ async function submitForm() {
     result = data;
     chartDetails = parseChart(data.chart);
     saveLastChart(result, chartDetails, insightsText, chatHistory);
+    preloadCompatFromChart(data.chart);
   } catch (e) {
     error = e.message || "Ошибка запроса";
   } finally {
@@ -304,6 +321,7 @@ async function openChartById(chartId) {
     askError = "";
     insightsError = "";
     saveLastChart(result, chartDetails, insightsText, chatHistory);
+    preloadCompatFromChart(data.chart);
   } catch (e) {
     showToast(e.message || "Ошибка загрузки карты");
   } finally {
@@ -319,6 +337,14 @@ async function calcCompat() {
   render();
   haptic();
   try {
+    if (!compatForm.self_date || !/^\d{2}\.\d{2}\.\d{4}$/.test(compatForm.self_date)) {
+      throw new Error("Укажите дату рождения (я)");
+    }
+    if (!compatForm.partner_date || !/^\d{2}\.\d{2}\.\d{4}$/.test(compatForm.partner_date)) {
+      throw new Error("Укажите дату партнёра");
+    }
+    if (!compatForm.self_place) throw new Error("Укажите место рождения (я)");
+    if (!compatForm.partner_place) throw new Error("Укажите место партнёра");
     const payload = {
       self_birth_date: compatForm.self_date,
       self_birth_time: compatForm.self_time || null,
