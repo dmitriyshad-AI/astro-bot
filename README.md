@@ -38,6 +38,8 @@ pip install -r requirements.txt
 uvicorn astro_api.main:app --reload --port 8000
 ```
 Маршрут `/api/health` отдаёт `{"status":"ok"}`. Если собран frontend (`webapp/dist`), бэкенд отдаёт его на `/` и статику; иначе показывает заглушку.
+- Основные API сейчас: `/api/geo/search`, `/api/natal/calc`, `/api/natal/{id}`, `/api/natal/{id}/wheel.svg`, `/api/insights/{chart_id}`, `/api/ask`.
+- Быстрый список карт: `/api/charts/recent` (для быстрого открытия последней/недавних карт в Mini App).
 
 ### Frontend (Vite, vanilla)
 ```bash
@@ -66,8 +68,13 @@ Telegram Mini App требует HTTPS-URL; локально можно смот
 - Часовой пояс оффлайн через `timezonefinder`.
 - Расчёт оффлайн (kerykeion/Swiss Ephemeris), система домов Placidus.
 - Результат: SVG круг натальной карты + текст (углы, дома, планеты/узлы/астероды, аспекты). При наличии OPENAI_API_KEY дополнительно генерируется интерпретация по фактическим позициям.
+- В Mini App доступны вкладки: основное, планеты, дома, аспекты, инсайты (генерация через OpenAI), wheel (SVG) и “Вопрос по карте” (чат с OpenAI на основе контекста карты).
+- Есть блок “Недавние карты” (берётся из API) и кнопка “Открыть последнюю карту”.
 
 ## Самопроверка без Telegram
 - CLI: `python -m astro_bot.debug_natal --date 12.03.1990 --time 08:30 --place "Москва, Россия"`
-- Тесты: `python -m unittest tests.test_natal_engine tests.test_init_data_validation`
+- Тесты:
+  ```bash
+  python -m unittest tests.test_natal_engine tests.test_init_data_validation tests.test_api_chat_insights
+  ```
 - Веб auth: `npm run dev` (в webapp) и `uvicorn astro_api.main:app --reload --port 8000`, затем `http://localhost:5173/?debug=1` → вставить initData и нажать Validate.

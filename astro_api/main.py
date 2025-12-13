@@ -221,7 +221,13 @@ async def get_chart(chart_id: int):
     row = db.get_chart(conn, chart_id)
     if not row:
         return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "chart not found"}})
-    return {"ok": True, "chart": row["chart_json"], "wheel_url": f"/api/natal/{chart_id}/wheel.svg"}
+    return {
+        "ok": True,
+        "chart": row["chart_json"],
+        "wheel_url": f"/api/natal/{chart_id}/wheel.svg",
+        "summary": row["summary"],
+        "created_at": row["created_at"],
+    }
 
 
 @app.get("/api/natal/{chart_id}/wheel.svg")
@@ -313,3 +319,23 @@ async def ask_question(payload: dict):
         for r in reversed(history_rows)
     ]
     return {"ok": True, "answer": answer, "history": history}
+
+
+@app.get("/api/charts/recent")
+async def get_recent_charts(limit: int = 5):
+    """Return recent charts for quick reopen."""
+    conn = db.get_connection()
+    db.init_db(conn)
+    rows = db.list_recent_charts(conn, limit=limit)
+    charts = []
+    for r in rows or []:
+        charts.append(
+            {
+                "id": r["id"],
+                "profile_id": r["profile_id"],
+                "summary": r["summary"],
+                "created_at": r["created_at"],
+                "place_query": r["place_query"],
+            }
+        )
+    return {"ok": True, "charts": charts}

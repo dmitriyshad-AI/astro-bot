@@ -275,6 +275,21 @@ def get_latest_chart_for_profile(conn: sqlite3.Connection, profile_id: int):
     ).fetchone()
 
 
+def list_recent_charts(conn: sqlite3.Connection, limit: int = 5):
+    """Return recent charts with basic info and place."""
+    return conn.execute(
+        """
+        SELECT c.id, c.profile_id, c.summary, c.created_at,
+               p.place_query, p.lat, p.lng, p.tz_str
+        FROM charts c
+        LEFT JOIN profiles p ON p.id = c.profile_id
+        ORDER BY c.created_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+
+
 def insert_chat_message(conn: sqlite3.Connection, *, chart_id: int, question: str, answer: str | None) -> int:
     """Store chat Q/A for a chart."""
     now = datetime.utcnow().isoformat()

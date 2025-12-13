@@ -50,6 +50,9 @@ let insightsText = "";
 let askText = "";
 let askLoading = false;
 let chatHistory = [];
+let recentCharts = [];
+let insightsError = "";
+let askError = "";
 let lastChart = loadLastChart();
 
 if (lastChart) {
@@ -82,7 +85,11 @@ async function fetchWhoAmI(initData) {
       : "Пользователь";
     render();
   } catch (err) {
+    statusText = "Auth error";
+    statusDetail = err.message || "Не удалось проверить initData";
+    verifiedUser = null;
     showToast(err.message || "Auth error");
+    render();
   }
 }
 
@@ -138,6 +145,8 @@ async function submitForm() {
   chatHistory = [];
   askText = "";
   askLoading = false;
+  insightsError = "";
+  askError = "";
   insightsLoading = false;
   render();
   try {
@@ -171,6 +180,7 @@ async function fetchInsights() {
     return;
   }
   insightsLoading = true;
+  insightsError = "";
   render();
   try {
     const res = await fetch(`/api/insights/${result.chart_id}`);
@@ -180,6 +190,7 @@ async function fetchInsights() {
     saveLastChart(result, chartDetails, insightsText, chatHistory);
     if (!insightsText) showToast("Инсайты пока пустые");
   } catch (e) {
+    insightsError = e.message || "Ошибка инсайтов";
     showToast(e.message || "Ошибка инсайтов");
   } finally {
     insightsLoading = false;
@@ -197,6 +208,7 @@ async function sendQuestion() {
     return;
   }
   askLoading = true;
+  askError = "";
   render();
   try {
     const res = await fetch("/api/ask", {
@@ -210,9 +222,53 @@ async function sendQuestion() {
     askText = "";
     saveLastChart(result, chartDetails, insightsText, chatHistory);
   } catch (e) {
+    askError = e.message || "Ошибка запроса";
     showToast(e.message || "Ошибка запроса");
   } finally {
     askLoading = false;
+    render();
+  }
+}
+
+async function fetchRecentCharts() {
+  try {
+    const res = await fetch("/api/charts/recent?limit=5");
+    const data = await res.json();
+    if (data.ok) {
+      recentCharts = data.charts || [];
+      render();
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+async function openChartById(chartId) {
+  if (!chartId) return;
+  loading = true;
+  render();
+  try {
+    const res = await fetch(`/api/natal/${chartId}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error?.message || "Не удалось открыть карту");
+    result = {
+      ok: true,
+      chart_id: chartId,
+      wheel_url: data.wheel_url,
+      summary: data.summary,
+      chart: data.chart,
+    };
+    chartDetails = parseChart(data.chart);
+    insightsText = "";
+    chatHistory = [];
+    askText = "";
+    askError = "";
+    insightsError = "";
+    saveLastChart(result, chartDetails, insightsText, chatHistory);
+  } catch (e) {
+    showToast(e.message || "Ошибка загрузки карты");
+  } finally {
+    loading = false;
     render();
   }
 }
@@ -346,7 +402,10 @@ function renderTabContent(chart, wheelLink) {
   if (currentTab === "insights") {
     if (insightsLoading) return "<div class='muted-small'>Генерирую инсайты...</div>";
     if (insightsText) return `<div class="list"><div>${insightsText.replace(/\n/g, "<br/>")}</div></div>`;
-    return "<div class='muted-small'>Нет инсайтов. Нажмите 'Сгенерировать инсайты'.</div>";
+    return `
+      ${insightsError ? `<div class="error">${insightsError}</div>` : ""}
+      <div class='muted-small'>Нет инсайтов. Нажмите 'Сгенерировать инсайты'.</div>
+    `;
   }
   if (currentTab === "chat") {
     const historyHtml =
@@ -366,6 +425,7 @@ function renderTabContent(chart, wheelLink) {
         <label for="ask">Вопрос по карте</label>
         <textarea class="input" id="ask" placeholder="Задайте вопрос" rows="3">${askText}</textarea>
       </div>
+      ${askError ? `<div class="error">${askError}</div>` : ""}
       <div class="actions">
         <button class="btn" id="ask-btn" ${askLoading ? "disabled" : ""}>${askLoading ? "Отправляю..." : "Спросить"}</button>
       </div>
@@ -415,6 +475,37 @@ function renderDebugBlock() {
   `;
 }
 
+function renderRecentCharts() {
+  if (!recentCharts || !recentCharts.length) {
+    return `
+      <div class="card" style="margin-top:12px;">
+        <div class="muted">Недавние карты</div>
+        <div class="muted-small">Пока нет сохранённых карт</div>
+        ${lastChart ? `<div class="actions" style="margin-top:10px;"><button class="btn secondary" data-open-chart="${lastChart?.result?.chart_id || ""}">Открыть последнюю</button></div>` : ""}
+      </div>
+    `;
+  }
+  const items = recentCharts
+    .map(
+      (c) => `
+      <div class="recent-item">
+        <div>
+          <div class="recent-summary">${c.summary || "Без описания"}</div>
+          <div class="muted-small">${c.place_query || "Место не указано"}</div>
+        </div>
+        <button class="btn secondary" data-open-chart="${c.id}">Открыть</button>
+      </div>`
+    )
+    .join("");
+  return `
+    <div class="card" style="margin-top:12px;">
+      <div class="muted" style="margin-bottom:8px;">Недавние карты</div>
+      <div class="recent-list">${items}</div>
+      ${lastChart ? `<div class="actions" style="margin-top:10px;"><button class="btn secondary" data-open-chart="${lastChart?.result?.chart_id || ""}">Открыть последнюю</button></div>` : ""}
+    </div>
+  `;
+}
+
 function renderInsightsButton() {
   if (!result?.chart_id) return "";
   const label = insightsLoading ? "Генерирую..." : insightsText ? "Обновить инсайты" : "Сгенерировать инсайты";
@@ -429,11 +520,13 @@ function saveLastChart(res, chart, insights, chat) {
   try {
     if (!res) {
       localStorage.removeItem(STORAGE_KEY);
+      lastChart = null;
       return;
     }
+    lastChart = { result: res, chartDetails: chart, insightsText: insights || "", chatHistory: chat || [] };
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ result: res, chartDetails: chart, insightsText: insights || "", chatHistory: chat || [] })
+      JSON.stringify(lastChart)
     );
   } catch {
     /* ignore */
@@ -494,15 +587,16 @@ function render() {
         ${error ? `<div class="error">${error}</div>` : ""}
         ${loading ? `<div class="loading">Считаю...</div>` : ""}
         <div class="actions">
-          <button class="btn" id="continue-btn" ${loading ? "disabled" : ""}>${loading ? "Считаю..." : "Рассчитать"}</button>
-          <button class="btn secondary" id="clear-btn">Очистить</button>
-        </div>
-      </div>
-      ${renderResult()}
-      ${renderDebugBlock()}
+      <button class="btn" id="continue-btn" ${loading ? "disabled" : ""}>${loading ? "Считаю..." : "Рассчитать"}</button>
+      <button class="btn secondary" id="clear-btn">Очистить</button>
     </div>
-    <div class="toast"></div>
-  `;
+  </div>
+  ${renderRecentCharts()}
+  ${renderResult()}
+  ${renderDebugBlock()}
+</div>
+<div class="toast"></div>
+`;
 
   document.getElementById("continue-btn")?.addEventListener("click", () => {
     form.birth_date = document.getElementById("birth_date").value.trim();
@@ -582,6 +676,12 @@ function render() {
 
   document.getElementById("insights-btn")?.addEventListener("click", fetchInsights);
   document.getElementById("ask-btn")?.addEventListener("click", sendQuestion);
+  document.querySelectorAll("[data-open-chart]")?.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cid = btn.getAttribute("data-open-chart");
+      if (cid) openChartById(cid);
+    });
+  });
 }
 
 render();
@@ -591,3 +691,5 @@ if (isTelegram && tg?.initData) {
 } else if (qs("debug") === "1") {
   showToast("Debug mode: можно вставить initData");
 }
+
+fetchRecentCharts();
