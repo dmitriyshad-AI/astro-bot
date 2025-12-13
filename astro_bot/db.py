@@ -44,4 +44,16 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS geo_cache (
+            query TEXT PRIMARY KEY,
+            lat REAL NOT NULL,
+            lng REAL NOT NULL,
+            tz_str TEXT NOT NULL,
+            display_name TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
     conn.commit()

@@ -8,3 +8,5 @@ __pycache__/
 .venv/
 .env
 astro_bot.db
+data/
+*.svg

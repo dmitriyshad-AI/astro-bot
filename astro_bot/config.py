@@ -17,11 +17,15 @@ LOG_LEVEL_ENV: Final[str] = "ASTRO_BOT_LOG_LEVEL"
 OPENAI_API_KEY_ENV: Final[str] = "OPENAI_API_KEY"
 OPENAI_MODEL_ENV: Final[str] = "OPENAI_MODEL"
 OPENAI_TEMPERATURE_ENV: Final[str] = "OPENAI_TEMPERATURE"
+NOMINATIM_USER_AGENT_ENV: Final[str] = "ASTRO_BOT_USER_AGENT"
+CHARTS_DIR_ENV: Final[str] = "ASTRO_BOT_CHARTS_DIR"
 
 # Значения по умолчанию
 DEFAULT_DB_PATH: Path = Path(__file__).resolve().parent.parent / "astro_bot.db"
 DEFAULT_OPENAI_MODEL: str = "gpt-4o-mini"
 DEFAULT_TEMPERATURE: float = 0.7
+DEFAULT_USER_AGENT: str = "astro-bot (contact: set ASTRO_BOT_USER_AGENT)"
+DEFAULT_CHARTS_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "charts"
 
 
 def get_bot_token() -> Optional[str]:
@@ -56,6 +60,19 @@ def get_db_path() -> Path:
     if env_value:
         return Path(env_value).expanduser()
     return DEFAULT_DB_PATH
+
+
+def get_user_agent() -> str:
+    """User-Agent для запросов к Nominatim."""
+    return os.getenv(NOMINATIM_USER_AGENT_ENV, DEFAULT_USER_AGENT)
+
+
+def get_charts_dir() -> Path:
+    """Папка для сохранения SVG-карт."""
+    env_value = os.getenv(CHARTS_DIR_ENV)
+    if env_value:
+        return Path(env_value).expanduser()
+    return DEFAULT_CHARTS_DIR
 
 
 def setup_logging() -> None:

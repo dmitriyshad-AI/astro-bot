@@ -43,6 +43,40 @@ def get_or_create_user(
     return cursor.lastrowid
 
 
+def get_cached_location(conn: sqlite3.Connection, query: str) -> Optional[sqlite3.Row]:
+    """Получить закэшированный результат геокодинга по строке запроса."""
+    return conn.execute(
+        "SELECT query, lat, lng, tz_str, display_name FROM geo_cache WHERE query = ?",
+        (query,),
+    ).fetchone()
+
+
+def upsert_cached_location(
+    conn: sqlite3.Connection,
+    *,
+    query: str,
+    lat: float,
+    lng: float,
+    tz_str: str,
+    display_name: Optional[str],
+) -> None:
+    """Сохранить или обновить запись геокода."""
+    conn.execute(
+        """
+        INSERT INTO geo_cache (query, lat, lng, tz_str, display_name, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(query) DO UPDATE SET
+            lat=excluded.lat,
+            lng=excluded.lng,
+            tz_str=excluded.tz_str,
+            display_name=excluded.display_name,
+            updated_at=CURRENT_TIMESTAMP
+        """,
+        (query, lat, lng, tz_str, display_name),
+    )
+    conn.commit()
+
+
 def log_request(
     conn: sqlite3.Connection,
     *,

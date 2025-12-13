@@ -1,4 +1,5 @@
 """Простой echo-бот на базе python-telegram-bot."""
+import asyncio
 import datetime as dt
 import json
 import logging
@@ -16,7 +17,7 @@ from telegram.ext import (
     filters,
 )
 
-from astro_bot import config, db, repositories, openai_client, astro_service
+from astro_bot import config, db, repositories, openai_client, natal_engine
 
 logger = logging.getLogger(__name__)
 ASKING_QUESTION = 1
@@ -216,35 +217,67 @@ async def natal_place(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     birth_place = data.get("place", "")
 
     try:
-        report = astro_service.generate_natal_report(
-            birth_date=birth_date,
-            birth_time=birth_time,
-            birth_place=birth_place,
+        result = await asyncio.to_thread(
+            natal_engine.generate_natal_chart,
+            birth_date_str=birth_date,
+            birth_time_str=birth_time,
+            place_query=birth_place,
+            db_conn=db_conn,
+            user_identifier=str(user_id),
+            charts_dir=config.get_charts_dir(),
         )
+    except natal_engine.NatalError as exc:
+        await update.message.reply_text(str(exc))
+        return ConversationHandler.END
     except Exception as exc:  # pylint: disable=broad-except
-        logger.error("Ошибка генерации натальной карты: %s", exc)
-        await update.message.reply_text(
-            "Не удалось сформировать разбор. Попробуйте позже."
-        )
+        logger.exception("Ошибка генерации натальной карты: %s", exc)
+        await update.message.reply_text("Не удалось сформировать разбор. Попробуйте позже.")
         return ConversationHandler.END
 
-    await update.message.reply_text(report)
+    await update.message.reply_text(result.summary)
 
-    if db_conn is None:
-        logger.warning("Пропущено логирование запроса: нет соединения с БД")
-        return ConversationHandler.END
+    try:
+        with result.svg_path.open("rb") as svg_file:
+            await update.message.reply_document(
+                document=svg_file,
+                filename=result.svg_path.name,
+                caption="Круг натальной карты (SVG)",
+            )
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.exception("Не удалось отправить SVG: %s", exc)
+        await update.message.reply_text("Не удалось отправить файл SVG, но текст готов.")
 
-    payload = json.dumps(
-        {"date": birth_date, "time": birth_time, "place": birth_place},
-        ensure_ascii=False,
-    )
     repositories.log_request(
         conn=db_conn,
         user_id=user_id,
         request_type="natal",
-        input_payload=payload,
-        response_text=report,
+        input_payload=json.dumps(
+            {"date": birth_date, "time": birth_time, "place": birth_place},
+            ensure_ascii=False,
+        ),
+        response_text=result.summary,
     )
+
+    if config.get_openai_api_key():
+        try:
+            llm_answer = openai_client.ask_gpt(
+                question=(
+                    "Сделай профессиональный астрологический разбор на основе фактических позиций:\n"
+                    f"{result.context_text}\n"
+                    "Дай 4-6 осмысленных пунктов без выдуманных позиций."
+                ),
+                role="астролог",
+            )
+            await update.message.reply_text(llm_answer)
+            repositories.log_request(
+                conn=db_conn,
+                user_id=user_id,
+                request_type="natal_llm",
+                input_payload=result.context_text,
+                response_text=llm_answer,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception("Ошибка LLM-интерпретации: %s", exc)
 
     context.user_data.pop("natal", None)
     return ConversationHandler.END
@@ -329,6 +362,9 @@ def run_bot(token: str) -> None:
         .post_init(set_commands)
         .build()
     )
+
+    # Подготовка каталога карт (очистка старых файлов)
+    natal_engine.cleanup_old_svgs(config.get_charts_dir())
 
     # Инициализация БД и сохранение соединения в bot_data
     db_conn = db.get_connection()
