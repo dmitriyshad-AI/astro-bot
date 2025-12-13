@@ -96,6 +96,26 @@ def init_db(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+    _migrate_schema(conn)
+
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row[1].lower() == column.lower() for row in rows)
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Lightweight migrations for existing installs."""
+    # charts.summary
+    if not _column_exists(conn, "charts", "summary"):
+        conn.execute("ALTER TABLE charts ADD COLUMN summary TEXT;")
+    # charts.created_at
+    if not _column_exists(conn, "charts", "created_at"):
+        conn.execute("ALTER TABLE charts ADD COLUMN created_at TEXT;")
+    # charts.llm_summary
+    if not _column_exists(conn, "charts", "llm_summary"):
+        conn.execute("ALTER TABLE charts ADD COLUMN llm_summary TEXT;")
+    conn.commit()
 
 
 def upsert_user(conn: sqlite3.Connection, user: dict) -> None:
@@ -212,14 +232,15 @@ def insert_chart(
     chart_json: str,
     wheel_path: str,
     summary: str | None,
+    llm_summary: str | None = None,
 ) -> int:
     now = datetime.utcnow().isoformat()
     cur = conn.execute(
         """
-        INSERT INTO charts (profile_id, chart_json, wheel_path, summary, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO charts (profile_id, chart_json, wheel_path, summary, llm_summary, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (profile_id, chart_json, wheel_path, summary, now),
+        (profile_id, chart_json, wheel_path, summary, llm_summary, now),
     )
     conn.commit()
     return cur.lastrowid
@@ -279,10 +300,8 @@ def list_recent_charts(conn: sqlite3.Connection, limit: int = 5):
     """Return recent charts with basic info and place."""
     return conn.execute(
         """
-        SELECT c.id, c.profile_id, c.summary, c.created_at,
-               p.place_query, p.lat, p.lng, p.tz_str
+        SELECT c.id, c.profile_id, c.summary, c.created_at, c.chart_json
         FROM charts c
-        LEFT JOIN profiles p ON p.id = c.profile_id
         ORDER BY c.created_at DESC
         LIMIT ?
         """,

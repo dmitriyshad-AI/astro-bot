@@ -16,6 +16,7 @@ from astro_api import natal_service
 from astro_api import insights_service
 from astro_api.telegram_webapp_auth import validate_init_data, InitDataError
 from astro_bot import openai_client
+from astro_bot import config as bot_config
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,7 @@ async def natal_calc(payload: dict):
         "chart_id": result["chart_id"],
         "profile_id": result["profile_id"],
         "summary": result["summary"],
+        "llm_summary": result.get("llm_summary"),
         "wheel_url": wheel_url,
         "chart": result["chart"],
         "location": result["location"],
@@ -227,6 +229,7 @@ async def get_chart(chart_id: int):
         "wheel_url": f"/api/natal/{chart_id}/wheel.svg",
         "summary": row["summary"],
         "created_at": row["created_at"],
+        "llm_summary": row["llm_summary"],
     }
 
 
@@ -314,6 +317,7 @@ async def ask_question(payload: dict):
         logger.warning("Failed to persist chat message for chart_id=%s", chart_id)
 
     history_rows = db.list_chat_messages(conn, chart_id=int(chart_id), limit=20) or []
+    history_rows = history_rows[:3] if history_rows else []
     history = [
         {"question": r["question"], "answer": r["answer"], "created_at": r["created_at"]}
         for r in reversed(history_rows)
@@ -322,20 +326,38 @@ async def ask_question(payload: dict):
 
 
 @app.get("/api/charts/recent")
-async def get_recent_charts(limit: int = 5):
+async def get_recent_charts(limit: int = 3):
     """Return recent charts for quick reopen."""
+    limit = max(1, min(limit, 10))
     conn = db.get_connection()
     db.init_db(conn)
     rows = db.list_recent_charts(conn, limit=limit)
     charts = []
     for r in rows or []:
+        birth_date = None
+        birth_time = None
+        place_display = None
+        chart_payload = None
+        if r["chart_json"]:
+            try:
+                chart_payload = json.loads(r["chart_json"]) if isinstance(r["chart_json"], str) else r["chart_json"]
+                birth_date = chart_payload.get("birth_date")
+                birth_time = chart_payload.get("birth_time")
+                place_display = chart_payload.get("location", {}).get("display_name")
+            except Exception:  # pylint: disable=broad-except
+                chart_payload = None
+        short_summary = (r["summary"] or "").split("\n")[0][:120] if r["summary"] else None
+        if not place_display:
+            place_display = None
         charts.append(
             {
                 "id": r["id"],
                 "profile_id": r["profile_id"],
-                "summary": r["summary"],
+                "summary": short_summary,
                 "created_at": r["created_at"],
-                "place_query": r["place_query"],
+                "birth_date": birth_date,
+                "birth_time": birth_time,
+                "place": place_display,
             }
         )
     return {"ok": True, "charts": charts}

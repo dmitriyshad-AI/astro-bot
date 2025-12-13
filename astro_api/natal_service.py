@@ -8,8 +8,9 @@ from typing import Optional
 
 from kerykeion import ChartDataFactory, to_context
 
-from astro_api import db
+from astro_api import db, config
 from astro_bot import natal_engine
+from astro_bot import openai_client
 
 
 def resolve_location(conn, query: str) -> natal_engine.LocationResult:
@@ -119,6 +120,22 @@ def calculate_natal_chart(
         subject, charts_dir, f"natal_{user_identifier}_{chart_data.subject.julian_day}"
     )
 
+    llm_summary = None
+    if config.get_openai_api_key():
+        prompt = (
+            "Ты профессиональный астролог. Объясни натальную карту простым языком для новичка. "
+            "Сделай 5–7 коротких пунктов: основные черты, сильные стороны, зоны роста. "
+            "Избегай жаргона, не пиши градусы/аспекты. Каждый пункт закончи строкой 'Основано на: ...' "
+            "со ссылкой на факт (Солнце в X, Луна в Y, дом, аспект). "
+            "В конце сделай самопроверку одной строкой: 'Проверка: все пункты опираются на перечисленные факты, без выдумок'. "
+            "Используй только факты из контекста ниже.\n\n"
+            f"{context_text}"
+        )
+        try:
+            llm_summary = openai_client.ask_gpt(prompt, role="астролог")
+        except Exception:
+            llm_summary = None
+
     profile_id = db.insert_profile(
         conn,
         telegram_user_id=telegram_user_id,
@@ -140,12 +157,14 @@ def calculate_natal_chart(
         chart_json=chart_json,
         wheel_path=str(svg_path),
         summary=summary,
+        llm_summary=llm_summary,
     )
 
     return {
         "chart_id": chart_id,
         "profile_id": profile_id,
         "summary": summary,
+        "llm_summary": llm_summary,
         "context_text": context_text,
         "wheel_path": str(svg_path),
         "chart": chart_payload,

@@ -70,6 +70,21 @@ function debounce(fn, delay = 300) {
   };
 }
 
+function formatDateInput(raw) {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  const parts = [];
+  if (digits.length > 0) parts.push(digits.slice(0, 2));
+  if (digits.length > 2) parts.push(digits.slice(2, 4));
+  if (digits.length > 4) parts.push(digits.slice(4, 8));
+  return parts.join(".");
+}
+
+function formatTimeInput(raw) {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+}
+
 async function fetchWhoAmI(initData) {
   try {
     const res = await fetch("/api/auth/whoami", {
@@ -232,7 +247,7 @@ async function sendQuestion() {
 
 async function fetchRecentCharts() {
   try {
-    const res = await fetch("/api/charts/recent?limit=5");
+    const res = await fetch("/api/charts/recent?limit=3");
     const data = await res.json();
     if (data.ok) {
       recentCharts = data.charts || [];
@@ -256,6 +271,7 @@ async function openChartById(chartId) {
       chart_id: chartId,
       wheel_url: data.wheel_url,
       summary: data.summary,
+      llm_summary: data.llm_summary,
       chart: data.chart,
     };
     chartDetails = parseChart(data.chart);
@@ -436,7 +452,7 @@ function renderTabContent(chart, wheelLink) {
   if (!chart) return "<div class='muted-small'>Нет данных</div>";
   if (currentTab === "highlights") {
     return `
-      <div><strong>Summary:</strong> ${result.summary ? result.summary.split("\\n")[0] : "—"}</div>
+      <div><strong>Summary:</strong> ${result.llm_summary ? result.llm_summary : result.summary ? result.summary.split("\\n")[0] : "—"}</div>
       <div class="section-title">Солнце / Луна / Asc / MC</div>
       <div class="pill-row">
         ${chart.highlights && chart.highlights.length ? chart.highlights.map((h) => `<span class="tag">${h}</span>`).join("") : "<div class='muted-small'>Нет данных</div>"}
@@ -487,14 +503,21 @@ function renderRecentCharts() {
   }
   const items = recentCharts
     .map(
-      (c) => `
+      (c) => {
+        const datePart = c.birth_date ? c.birth_date : "Дата?";
+        const timePart = c.birth_time ? `, ${c.birth_time}` : "";
+        const placePart = c.place ? ` — ${c.place}` : "";
+        const summaryPart = c.summary ? `<div class="muted-small">${c.summary}</div>` : "";
+        return `
       <div class="recent-item">
         <div>
-          <div class="recent-summary">${c.summary || "Без описания"}</div>
-          <div class="muted-small">${c.place_query || "Место не указано"}</div>
+          <div class="recent-summary">${datePart}${timePart}${placePart}</div>
+          ${summaryPart}
         </div>
         <button class="btn secondary" data-open-chart="${c.id}">Открыть</button>
       </div>`
+        ;
+      }
     )
     .join("");
   return `
@@ -626,10 +649,14 @@ function render() {
   });
 
   document.getElementById("birth_date")?.addEventListener("input", (e) => {
-    form.birth_date = e.target.value;
+    const formatted = formatDateInput(e.target.value);
+    e.target.value = formatted;
+    form.birth_date = formatted;
   });
   document.getElementById("birth_time")?.addEventListener("input", (e) => {
-    form.birth_time = e.target.value;
+    const formatted = formatTimeInput(e.target.value);
+    e.target.value = formatted;
+    form.birth_time = formatted;
   });
   document.getElementById("ask")?.addEventListener("input", (e) => {
     askText = e.target.value;
