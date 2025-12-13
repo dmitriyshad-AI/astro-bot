@@ -10,3 +10,6 @@ __pycache__/
 astro_bot.db
 data/
 *.svg
+webapp/node_modules/
+webapp/dist/
+*.log
