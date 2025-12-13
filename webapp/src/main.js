@@ -62,6 +62,17 @@ let recentCharts = [];
 let insightsError = "";
 let askError = "";
 let lastChart = loadLastChart();
+let compatForm = {
+  self_date: "",
+  self_time: "",
+  self_place: "",
+  partner_date: "",
+  partner_time: "",
+  partner_place: "",
+};
+let compatLoading = false;
+let compatError = "";
+let compatResult = null;
 
 if (lastChart) {
   result = lastChart.result;
@@ -301,6 +312,45 @@ async function openChartById(chartId) {
   }
 }
 
+async function calcCompat() {
+  compatError = "";
+  compatLoading = true;
+  compatResult = null;
+  render();
+  haptic();
+  try {
+    const payload = {
+      self_birth_date: compatForm.self_date,
+      self_birth_time: compatForm.self_time || null,
+      self_place: compatForm.self_place,
+      partner_birth_date: compatForm.partner_date,
+      partner_birth_time: compatForm.partner_time || null,
+      partner_place: compatForm.partner_place,
+      telegram_user_id: verifiedUser?.id,
+    };
+    const res = await fetch("/api/compatibility/calc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error?.message || "Ошибка совместимости");
+    compatResult = {
+      id: data.compatibility_id,
+      score: data.score,
+      key_aspects: data.key_aspects,
+      top_aspects: data.top_aspects,
+      wheel_url: data.wheel_url,
+    };
+  } catch (e) {
+    compatError = e.message || "Ошибка запроса";
+    showToast(compatError);
+  } finally {
+    compatLoading = false;
+    render();
+  }
+}
+
 function parseChart(rawChart) {
   if (!rawChart) return null;
   let chartObj = rawChart;
@@ -393,6 +443,7 @@ function renderTabs() {
     { id: "insights", label: "Инсайты" },
     { id: "chat", label: "Вопрос" },
     { id: "wheel", label: "Wheel" },
+    { id: "compat", label: "Совместимость" },
   ];
   return `
     <div class="tabs">
@@ -430,11 +481,71 @@ function renderResult() {
   `;
 }
 
+function renderCompat() {
+  const score = compatResult?.score;
+  const keyAspects = compatResult?.key_aspects || [];
+  const topAspects = compatResult?.top_aspects || [];
+  const wheelLink = compatResult?.wheel_url;
+  return `
+    <div class="section-title">Моя карта</div>
+    <div class="field">
+      <label for="self_date">Дата</label>
+      <input class="input" id="self_date" type="text" placeholder="ДД.ММ.ГГГГ" value="${compatForm.self_date}" />
+    </div>
+    <div class="field">
+      <label for="self_time">Время</label>
+      <input class="input" id="self_time" type="text" placeholder="ЧЧ:ММ или пусто" value="${compatForm.self_time}" />
+    </div>
+    <div class="field">
+      <label for="self_place">Место</label>
+      <input class="input" id="self_place" type="text" placeholder="Город, страна" value="${compatForm.self_place}" />
+    </div>
+    <div class="section-title">Партнёр</div>
+    <div class="field">
+      <label for="partner_date">Дата</label>
+      <input class="input" id="partner_date" type="text" placeholder="ДД.ММ.ГГГГ" value="${compatForm.partner_date}" />
+    </div>
+    <div class="field">
+      <label for="partner_time">Время</label>
+      <input class="input" id="partner_time" type="text" placeholder="ЧЧ:ММ или пусто" value="${compatForm.partner_time}" />
+    </div>
+    <div class="field">
+      <label for="partner_place">Место</label>
+      <input class="input" id="partner_place" type="text" placeholder="Город, страна" value="${compatForm.partner_place}" />
+    </div>
+    ${compatError ? `<div class="error">${compatError}</div>` : ""}
+    <div class="actions" style="margin-top:10px;">
+      <button class="btn" id="compat-calc" ${compatLoading ? "disabled" : ""}>${compatLoading ? "Считаю..." : "Совместимость"}</button>
+    </div>
+    ${
+      compatResult
+        ? `
+      <div class="section-title" style="margin-top:12px;">Score</div>
+      <div class="pill">${score?.value ?? "?"} — ${score?.description ?? "Оценка отношений"}</div>
+      <div class="section-title">Ключевые аспекты</div>
+      <div class="list">
+        ${keyAspects.length ? keyAspects.map((a) => `<div>${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`).join("") : "<div class='muted-small'>Нет данных</div>"}
+      </div>
+      <div class="section-title">Топ аспектов</div>
+      <div class="list">
+        ${topAspects.length ? topAspects.map((a) => `<div>${a.p1} — ${a.p2}: ${a.aspect} (орб ${Math.abs(a.orbit).toFixed(2)}°)</div>`).join("") : "<div class='muted-small'>Нет данных</div>"}
+      </div>
+      <div class="section-title">Wheel</div>
+      ${wheelLink ? `<div style="margin-top:8px; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0;"><object data="${wheelLink}" type="image/svg+xml" style="width:100%; min-height:320px;"></object></div>` : "<div class='muted-small'>Нет SVG</div>"}
+    `
+        : ""
+    }
+  `;
+}
+
 function renderTabContent(chart, wheelLink) {
   if (currentTab === "wheel") {
     return wheelLink
       ? `<div class="section-title">SVG wheel</div><div style="margin-top:8px; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0;"><object data="${wheelLink}" type="image/svg+xml" style="width:100%; min-height:320px;"></object></div>`
       : "<div class='muted-small'>Нет SVG</div>";
+  }
+  if (currentTab === "compat") {
+    return renderCompat();
   }
   if (currentTab === "insights") {
     if (insightsLoading) return "<div class='muted-small'>Генерирую инсайты...</div>";
@@ -645,12 +756,12 @@ function render() {
       <button class="btn secondary" id="clear-btn">Очистить</button>
     </div>
   </div>
-  ${renderRecentCharts()}
-  ${renderResult()}
-  ${renderDebugBlock()}
-</div>
-<div class="toast"></div>
-`;
+      ${renderRecentCharts()}
+      ${renderResult()}
+      ${renderDebugBlock()}
+    </div>
+    <div class="toast"></div>
+  `;
 
   document.getElementById("continue-btn")?.addEventListener("click", () => {
     form.birth_date = document.getElementById("birth_date").value.trim();
@@ -710,6 +821,7 @@ function render() {
       if (tab) {
         currentTab = tab;
         render();
+        haptic();
       }
     });
   });
@@ -739,6 +851,16 @@ function render() {
       const cid = btn.getAttribute("data-open-chart");
       if (cid) openChartById(cid);
     });
+  });
+
+  document.getElementById("compat-calc")?.addEventListener("click", () => {
+    compatForm.self_date = formatDateInput(document.getElementById("self_date").value);
+    compatForm.self_time = formatTimeInput(document.getElementById("self_time").value);
+    compatForm.self_place = document.getElementById("self_place").value.trim();
+    compatForm.partner_date = formatDateInput(document.getElementById("partner_date").value);
+    compatForm.partner_time = formatTimeInput(document.getElementById("partner_time").value);
+    compatForm.partner_place = document.getElementById("partner_place").value.trim();
+    calcCompat();
   });
 }
 

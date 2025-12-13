@@ -115,6 +115,22 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     # charts.llm_summary
     if not _column_exists(conn, "charts", "llm_summary"):
         conn.execute("ALTER TABLE charts ADD COLUMN llm_summary TEXT;")
+    # compatibility_runs
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS compatibility_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            self_profile_id INTEGER,
+            partner_profile_id INTEGER,
+            synastry_json TEXT,
+            score_json TEXT,
+            top_aspects_json TEXT,
+            wheel_path TEXT,
+            created_at TEXT
+        );
+        """
+    )
     conn.commit()
 
 
@@ -244,6 +260,36 @@ def insert_chart(
     )
     conn.commit()
     return cur.lastrowid
+
+
+def insert_compatibility(
+    conn: sqlite3.Connection,
+    *,
+    user_id: str | None,
+    self_profile_id: int | None,
+    partner_profile_id: int | None,
+    synastry_json: str,
+    score_json: str | None,
+    top_aspects_json: str | None,
+    wheel_path: str | None,
+) -> int:
+    now = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        """
+        INSERT INTO compatibility_runs (
+            user_id, self_profile_id, partner_profile_id,
+            synastry_json, score_json, top_aspects_json, wheel_path, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (user_id, self_profile_id, partner_profile_id, synastry_json, score_json, top_aspects_json, wheel_path, now),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_compatibility(conn: sqlite3.Connection, comp_id: int):
+    return conn.execute("SELECT * FROM compatibility_runs WHERE id = ?", (comp_id,)).fetchone()
 
 
 def get_chart(conn: sqlite3.Connection, chart_id: int):

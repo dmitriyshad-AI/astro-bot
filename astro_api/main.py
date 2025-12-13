@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from astro_api import config, db
 from astro_api import natal_service
 from astro_api import insights_service
+from astro_api import compatibility_service
 from astro_api.telegram_webapp_auth import validate_init_data, InitDataError
 from astro_bot import openai_client
 from astro_bot import config as bot_config
@@ -263,6 +264,78 @@ async def get_wheel(chart_id: int):
     wheel_path = Path(row["wheel_path"])
     if not wheel_path.exists():
         return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "wheel file missing"}})
+    return FileResponse(wheel_path, media_type="image/svg+xml")
+
+
+@app.post("/api/compatibility/calc")
+async def compatibility_calc(payload: dict):
+    """Calculate synastry (compatibility) between two birth data sets."""
+    required = ["self_birth_date", "self_place", "partner_birth_date", "partner_place"]
+    for key in required:
+        if key not in payload:
+            return JSONResponse(status_code=400, content={"ok": False, "error": {"code": "missing_field", "message": f"{key} is required"}})
+
+    self_birth_date = payload.get("self_birth_date")
+    self_birth_time = payload.get("self_birth_time")
+    self_place = payload.get("self_place")
+    partner_birth_date = payload.get("partner_birth_date")
+    partner_birth_time = payload.get("partner_birth_time")
+    partner_place = payload.get("partner_place")
+    telegram_user_id = payload.get("telegram_user_id")
+
+    conn = db.get_connection()
+    db.init_db(conn)
+    try:
+        result = compatibility_service.calculate_compatibility(
+            conn=conn,
+            user_id=str(telegram_user_id) if telegram_user_id else None,
+            self_birth_date=self_birth_date,
+            self_birth_time=self_birth_time,
+            self_place=self_place,
+            partner_birth_date=partner_birth_date,
+            partner_birth_time=partner_birth_time,
+            partner_place=partner_place,
+            charts_dir=config.get_webapp_dist_dir().parent / "charts",
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        return JSONResponse(status_code=500, content={"ok": False, "error": {"code": "compat_error", "message": str(exc)}})
+
+    return {
+        "ok": True,
+        "compatibility_id": result["id"],
+        "score": result["score"],
+        "top_aspects": result["top_aspects"],
+        "key_aspects": result["key_aspects"],
+        "wheel_url": f"/api/compatibility/{result['id']}/wheel.svg",
+    }
+
+
+@app.get("/api/compatibility/{comp_id}")
+async def get_compatibility(comp_id: int):
+    conn = db.get_connection()
+    db.init_db(conn)
+    row = db.get_compatibility(conn, comp_id)
+    if not row:
+        return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "compatibility not found"}})
+    return {
+        "ok": True,
+        "synastry": row["synastry_json"],
+        "score": row["score_json"],
+        "top_aspects": row["top_aspects_json"],
+        "wheel_url": f"/api/compatibility/{comp_id}/wheel.svg",
+    }
+
+
+@app.get("/api/compatibility/{comp_id}/wheel.svg")
+async def get_compatibility_wheel(comp_id: int):
+    conn = db.get_connection()
+    db.init_db(conn)
+    row = db.get_compatibility(conn, comp_id)
+    if not row or not row["wheel_path"]:
+        return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "wheel not found"}})
+    wheel_path = Path(row["wheel_path"])
+    if not wheel_path.exists():
+        return JSONResponse(status_code=404, content={"ok": False, "error": {"code": "not_found", "message": "wheel missing"}})
     return FileResponse(wheel_path, media_type="image/svg+xml")
 
 
