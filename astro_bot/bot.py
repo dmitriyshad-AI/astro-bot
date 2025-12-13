@@ -1,5 +1,4 @@
 """Простой echo-бот на базе python-telegram-bot."""
-"""Я важный писюнец"""
 import datetime as dt
 import json
 import logging
@@ -25,8 +24,10 @@ NATAL_DATE, NATAL_TIME, NATAL_PLACE = range(2, 5)
 
 BOT_COMMANDS = [
     BotCommand("start", "Приветствие"),
+    BotCommand("help", "Список команд"),
     BotCommand("ask", "Спросить астролога"),
     BotCommand("natal", "Ввести данные рождения"),
+    BotCommand("history", "Последние запросы"),
 ]
 
 
@@ -37,9 +38,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     ensure_user(update, context)
 
     greeting = (
-        "Привет! Я учебный астробот. Пока что я просто повторяю ваши сообщения."
+        "Привет! Я учебный астробот. Я могу:\n"
+        "• /ask — спросить меня как астролога\n"
+        "• /natal — ввести дату/время/место рождения для разбора\n"
+        "• повторять обычные сообщения (echo)\n"
+        "• /history — показать последние запросы\n"
+        "Если что — /help подскажет команды."
     )
     await update.message.reply_text(greeting)
+
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показать список команд."""
+    ensure_user(update, context)
+    await update.message.reply_text(
+        "/start — приветствие\n"
+        "/help — список команд\n"
+        "/ask — задать вопрос (OpenAI)\n"
+        "/natal — ввести данные рождения\n"
+        "/history — показать последние запросы"
+    )
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -237,6 +255,48 @@ async def set_commands(application: Application) -> None:
     await application.bot.set_my_commands(BOT_COMMANDS)
     logger.info("Команды бота обновлены: %s", [cmd.command for cmd in BOT_COMMANDS])
 
+async def history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Вывести последние N запросов пользователя."""
+    user_id = ensure_user(update, context)
+    if user_id is None:
+        await update.message.reply_text("Не удалось определить пользователя.")
+        return
+
+    db_conn = context.application.bot_data.get("db_conn")
+    if db_conn is None:
+        await update.message.reply_text("История недоступна: нет соединения с БД.")
+        return
+
+    limit = 5
+    if context.args:
+        try:
+            limit = max(1, min(20, int(context.args[0])))
+        except ValueError:
+            await update.message.reply_text("Введите число после /history, например /history 5.")
+            return
+
+    rows = db_conn.execute(
+        """
+        SELECT type, input_payload, response_text, created_at
+        FROM requests
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+
+    if not rows:
+        await update.message.reply_text("История пуста.")
+        return
+
+    lines = []
+    for row in rows:
+        snippet = (row["response_text"] or "")[:120].replace("\n", " ")
+        lines.append(f"{row['created_at']} | {row['type']} | {snippet}")
+
+    await update.message.reply_text("\n".join(lines))
+
 
 def ensure_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Optional[int]:
     """Создать или обновить пользователя в базе."""
@@ -277,6 +337,7 @@ def run_bot(token: str) -> None:
 
     # Регистрация обработчиков
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(
         ConversationHandler(
             entry_points=[CommandHandler("ask", ask)],
@@ -305,6 +366,7 @@ def run_bot(token: str) -> None:
             fallbacks=[CommandHandler("cancel", cancel)],
         )
     )
+    application.add_handler(CommandHandler("history", history))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Полный цикл запуска/пулинга/остановки
