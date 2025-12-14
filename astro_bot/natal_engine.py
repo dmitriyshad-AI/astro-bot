@@ -23,7 +23,6 @@ from astro_bot import config, repositories
 
 logger = logging.getLogger(__name__)
 
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OPENCAGE_URL = "https://api.opencagedata.com/geocode/v1/json"
 ACTIVE_POINTS: Sequence[str] = [
     "Sun",
@@ -111,7 +110,7 @@ def parse_birth_time(time_str: Optional[str]) -> Optional[dt.time]:
 
 
 def resolve_location(query: str, conn) -> LocationResult:
-    """Геокодинг места рождения с кэшем в БД."""
+    """Геокодинг места рождения с кэшем в БД (только OpenCage)."""
     norm_query = query.strip()
     if not norm_query:
         raise NatalError("Место рождения не задано.")
@@ -126,7 +125,7 @@ def resolve_location(query: str, conn) -> LocationResult:
             tz_str=cached["tz_str"],
         )
 
-    location = geocode_with_fallback(norm_query)
+    location = geocode_opencage_required(norm_query)
     repositories.upsert_cached_location(
         conn,
         query=norm_query,
@@ -138,21 +137,12 @@ def resolve_location(query: str, conn) -> LocationResult:
     return location
 
 
-def geocode_with_fallback(query: str) -> LocationResult:
-    """Попытка через OpenCage (если есть ключ), иначе Nominatim."""
+def geocode_opencage_required(query: str) -> LocationResult:
+    """Геокодинг через OpenCage, обязательно с ключом."""
     oc_key = config.get_opencage_api_key()
-    last_exc = None
-    if oc_key:
-        try:
-            return geocode_opencage(query, oc_key)
-        except NatalError as exc:
-            last_exc = exc
-    try:
-        return geocode_nominatim(query)
-    except NatalError as exc:
-        if last_exc:
-            raise last_exc
-        raise exc
+    if not oc_key:
+        raise NatalError("Не задан OPENCAGE_API_KEY для геокодинга.")
+    return geocode_opencage(query, oc_key)
 
 
 def geocode_opencage(query: str, api_key: str) -> LocationResult:
@@ -199,53 +189,6 @@ def geocode_opencage(query: str, api_key: str) -> LocationResult:
         tz_str=tz_str,
     )
 
-
-def geocode_nominatim(query: str) -> LocationResult:
-    """Запрос к Nominatim (с паузой <=1 rps) + определение таймзоны, c ретраями."""
-    user_agent = config.get_user_agent()
-    headers = {"User-Agent": user_agent}
-    params = {"q": query, "format": "json", "limit": 1}
-
-    last_exc = None
-    for attempt in range(3):
-        if attempt > 0:
-            time.sleep(1 + attempt * 0.5)
-        else:
-            time.sleep(1.0)
-        try:
-            resp = requests.get(NOMINATIM_URL, params=params, headers=headers, timeout=8)
-            resp.raise_for_status()
-            data = resp.json()
-            break
-        except requests.Timeout as exc:
-            last_exc = exc
-            logger.warning("Timeout Nominatim for query=%s attempt=%s", query, attempt + 1)
-            continue
-        except requests.RequestException as exc:
-            logger.exception("Ошибка геокодинга Nominatim")
-            raise NatalError("Не удалось определить координаты. Попробуйте другое место.") from exc
-    else:
-        raise NatalError("Сервис геокодинга не ответил. Попробуйте ещё раз или уточните место.") from last_exc
-
-    if not data:
-        raise NatalError("Место не найдено. Уточните город/страну.")
-
-    first = data[0]
-    lat = float(first["lat"])
-    lng = float(first["lon"])
-    display_name = first.get("display_name", query)
-
-    tz_str = tz_finder.timezone_at(lat=lat, lng=lng)
-    if not tz_str:
-        raise NatalError("Не удалось определить часовую зону для этого места.")
-
-    return LocationResult(
-        query=query,
-        display_name=display_name,
-        lat=lat,
-        lng=lng,
-        tz_str=tz_str,
-    )
 
 
 def build_subject(
