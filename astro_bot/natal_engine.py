@@ -24,6 +24,7 @@ from astro_bot import config, repositories
 logger = logging.getLogger(__name__)
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+OPENCAGE_URL = "https://api.opencagedata.com/geocode/v1/json"
 ACTIVE_POINTS: Sequence[str] = [
     "Sun",
     "Moon",
@@ -125,7 +126,7 @@ def resolve_location(query: str, conn) -> LocationResult:
             tz_str=cached["tz_str"],
         )
 
-    location = geocode_nominatim(norm_query)
+    location = geocode_with_fallback(norm_query)
     repositories.upsert_cached_location(
         conn,
         query=norm_query,
@@ -135,6 +136,68 @@ def resolve_location(query: str, conn) -> LocationResult:
         display_name=location.display_name,
     )
     return location
+
+
+def geocode_with_fallback(query: str) -> LocationResult:
+    """Попытка через OpenCage (если есть ключ), иначе Nominatim."""
+    oc_key = config.get_opencage_api_key()
+    last_exc = None
+    if oc_key:
+        try:
+            return geocode_opencage(query, oc_key)
+        except NatalError as exc:
+            last_exc = exc
+    try:
+        return geocode_nominatim(query)
+    except NatalError as exc:
+        if last_exc:
+            raise last_exc
+        raise exc
+
+
+def geocode_opencage(query: str, api_key: str) -> LocationResult:
+    """Геокодинг через OpenCage."""
+    params = {"q": query, "key": api_key, "limit": 1, "no_annotations": 1}
+    last_exc = None
+    for attempt in range(3):
+        if attempt > 0:
+            time.sleep(0.5 + attempt * 0.5)
+        try:
+            resp = requests.get(OPENCAGE_URL, params=params, timeout=8)
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except requests.Timeout as exc:
+            last_exc = exc
+            continue
+        except requests.RequestException as exc:
+            last_exc = exc
+            break
+    else:
+        raise NatalError("Геокодер недоступен. Попробуйте ещё раз.") from last_exc
+
+    results = data.get("results") if isinstance(data, dict) else None
+    if not results:
+        raise NatalError("Место не найдено. Уточните город/страду.")
+    first = results[0]
+    geometry = first.get("geometry") or {}
+    lat = geometry.get("lat")
+    lng = geometry.get("lng")
+    if lat is None or lng is None:
+        raise NatalError("Не удалось определить координаты.")
+
+    display_name = first.get("formatted") or query
+    tz_str = tz_finder.timezone_at(lat=float(lat), lng=float(lng))
+    if not tz_str:
+        raise NatalError("Не удалось определить часовую зону для этого места.")
+
+    return LocationResult(
+        query=query,
+        display_name=display_name,
+        lat=float(lat),
+        lng=float(lng),
+        tz_str=tz_str,
+    )
 
 
 def geocode_nominatim(query: str) -> LocationResult:

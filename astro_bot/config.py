@@ -21,6 +21,7 @@ NOMINATIM_USER_AGENT_ENV: Final[str] = "ASTRO_BOT_USER_AGENT"
 CHARTS_DIR_ENV: Final[str] = "ASTRO_BOT_CHARTS_DIR"
 WEBAPP_PUBLIC_URL_ENV: Final[str] = "WEBAPP_PUBLIC_URL"
 WEBAPP_MENU_TEXT_ENV: Final[str] = "WEBAPP_MENU_TEXT"
+OPENCAGE_API_KEY_ENV: Final[str] = "OPENCAGE_API_KEY"
 
 # Значения по умолчанию
 DEFAULT_DB_PATH: Path = Path(__file__).resolve().parent.parent / "astro_bot.db"
@@ -68,6 +69,11 @@ def get_db_path() -> Path:
 def get_user_agent() -> str:
     """User-Agent для запросов к Nominatim."""
     return os.getenv(NOMINATIM_USER_AGENT_ENV, DEFAULT_USER_AGENT)
+
+
+def get_opencage_api_key() -> Optional[str]:
+    """Ключ OpenCage (если задан)."""
+    return os.getenv(OPENCAGE_API_KEY_ENV)
 
 
 def get_charts_dir() -> Path:
