@@ -107,7 +107,9 @@ def calculate_compatibility(
             include_relationship_score=True,
         )
         drawer = ChartDrawer(chart_data=synastry_data)
-        svg_path = drawer.save_svg(charts_dir / f"compat_{self_subject.julian_day}_{partner_subject.julian_day}.svg")
+        filename = f"compat_{self_subject.julian_day}_{partner_subject.julian_day}"
+        drawer.save_svg(charts_dir, filename=filename)
+        svg_path = charts_dir / f"{filename}.svg"
 
     top_aspects, key_aspects = build_top_aspects(synastry_data.aspects)
     overlays = build_house_overlays(synastry_data.house_comparison)
