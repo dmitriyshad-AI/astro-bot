@@ -17,7 +17,7 @@ LOG_LEVEL_ENV: Final[str] = "ASTRO_BOT_LOG_LEVEL"
 OPENAI_API_KEY_ENV: Final[str] = "OPENAI_API_KEY"
 OPENAI_MODEL_ENV: Final[str] = "OPENAI_MODEL"
 OPENAI_TEMPERATURE_ENV: Final[str] = "OPENAI_TEMPERATURE"
-NOMINATIM_USER_AGENT_ENV: Final[str] = "ASTRO_BOT_USER_AGENT"
+GEOCODER_USER_AGENT_ENV: Final[str] = "ASTRO_BOT_USER_AGENT"
 CHARTS_DIR_ENV: Final[str] = "ASTRO_BOT_CHARTS_DIR"
 WEBAPP_PUBLIC_URL_ENV: Final[str] = "WEBAPP_PUBLIC_URL"
 WEBAPP_MENU_TEXT_ENV: Final[str] = "WEBAPP_MENU_TEXT"
@@ -67,8 +67,8 @@ def get_db_path() -> Path:
 
 
 def get_user_agent() -> str:
-    """User-Agent для запросов к Nominatim."""
-    return os.getenv(NOMINATIM_USER_AGENT_ENV, DEFAULT_USER_AGENT)
+    """User-Agent для внешних запросов (не обязателен для OpenCage)."""
+    return os.getenv(GEOCODER_USER_AGENT_ENV, DEFAULT_USER_AGENT)
 
 
 def get_opencage_api_key() -> Optional[str]:

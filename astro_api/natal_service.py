@@ -14,7 +14,7 @@ from astro_bot import openai_client
 
 
 def resolve_location(conn, query: str) -> natal_engine.LocationResult:
-    """Resolve location with cache; use Nominatim if not cached."""
+    """Resolve location with cache; use OpenCage if not cached."""
     norm_query = query.strip()
     if not norm_query:
         raise natal_engine.NatalError("Место рождения не задано.")
@@ -27,7 +27,7 @@ def resolve_location(conn, query: str) -> natal_engine.LocationResult:
             lng=cached["lng"],
             tz_str=cached["tz_str"],
         )
-    location = natal_engine.geocode_nominatim(norm_query)
+    location = natal_engine.geocode_opencage_required(norm_query)
     db.upsert_cached_location(
         conn,
         query=norm_query,
