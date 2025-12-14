@@ -860,8 +860,11 @@ function renderTabContent(chart, wheelLink) {
   }
   if (!chart) return "<div class='muted-small'>Нет данных</div>";
   if (currentTab === "highlights") {
+    const mainText = result.llm_summary || result.summary || "";
+    const mainBlock = mainText ? renderInsightCards(mainText) : "<div class='muted-small'>Нет основного описания</div>";
     return `
-      <div><strong>✨ Главный акцент:</strong><br/>${result.llm_summary ? result.llm_summary : result.summary ? result.summary.split("\\n")[0] : "—"}</div>
+      <div class="section-title">✨ Главное</div>
+      ${mainBlock}
       <div class="section-title">🌞🌙 Asc / MC</div>
       <div class="pill-row">
         ${chart.highlights && chart.highlights.length ? chart.highlights.map((h) => `<span class="tag">✨ ${h}</span>`).join("") : "<div class='muted-small'>Нет данных</div>"}

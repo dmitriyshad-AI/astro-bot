@@ -74,6 +74,7 @@ body {
   border: 1px solid var(--glass-border);
   padding: 16px;
   box-shadow: var(--shadow);
+  color: var(--text);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   transition: transform 150ms ease, box-shadow 150ms ease;
@@ -172,6 +173,7 @@ body {
   border: 1px solid #e2e8f0;
   background: rgba(255, 255, 255, 0.85);
   font-size: 16px;
+  color: var(--text);
 }
 
 .input:focus {
@@ -198,6 +200,7 @@ body {
   border-radius: 12px;
   border: 1px dashed rgba(108, 123, 255, 0.35);
   background: rgba(255, 255, 255, 0.55);
+  color: var(--text);
 }
 
 .list div + div {
@@ -253,6 +256,7 @@ body {
   background: rgba(255, 255, 255, 0.75);
   border: 1px solid rgba(108, 123, 255, 0.25);
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  color: var(--text);
 }
 
 .insight-title {

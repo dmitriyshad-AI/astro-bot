@@ -73,7 +73,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Повторить любое текстовое сообщение пользователя."""
+    """Ответ по умолчанию: рассказать про бота и Mini App."""
     if update.message is None:
         return
     user_id = ensure_user(update, context)
@@ -81,7 +81,11 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     incoming_text = update.message.text
-    await update.message.reply_text(incoming_text)
+    promo = (
+        "Я AstroGlass — астробот нового поколения. Опираюсь на реальные положения планет "
+        "и добавляю разбор с помощью ИИ. Открой Mini App и получи свою карту: /app"
+    )
+    await update.message.reply_text(promo)
 
     db_conn = context.application.bot_data.get("db_conn")
     if db_conn is None:
@@ -90,9 +94,9 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     repositories.log_request(
         conn=db_conn,
         user_id=user_id,
-        request_type="echo",
+        request_type="info",
         input_payload=incoming_text,
-        response_text=incoming_text,
+        response_text=promo,
     )
 
 
