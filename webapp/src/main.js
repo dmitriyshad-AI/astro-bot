@@ -249,7 +249,7 @@ const doPlaceSuggest = debounce(async (query) => {
     placeLoading = false;
     render();
   }
-}, 400);
+}, 3000);
 
 const doSelfPlaceSuggest = debounce(async (query) => {
   if (!query || query.length < 2) {
@@ -274,7 +274,7 @@ const doSelfPlaceSuggest = debounce(async (query) => {
     selfPlaceLoading = false;
     render();
   }
-}, 400);
+}, 3000);
 
 const doPartnerPlaceSuggest = debounce(async (query) => {
   if (!query || query.length < 2) {
@@ -299,7 +299,7 @@ const doPartnerPlaceSuggest = debounce(async (query) => {
     partnerPlaceLoading = false;
     render();
   }
-}, 400);
+}, 3000);
 
 async function submitForm() {
   error = "";
