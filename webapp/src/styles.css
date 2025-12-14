@@ -306,6 +306,21 @@ body {
   margin-top: 12px;
 }
 
+.tabs-group {
+  margin-top: 12px;
+}
+
+.tabs-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.tabs-compact {
+  margin-top: 8px;
+  gap: 6px;
+}
+
 .tab {
   padding: 8px 12px;
   border-radius: 10px;

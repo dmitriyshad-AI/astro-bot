@@ -649,23 +649,38 @@ function renderInsightCards(text) {
 }
 
 function renderTabs() {
-  const tabs = [
+  const primary = [
     { id: "highlights", label: "Основное" },
+    { id: "chat", label: "Вопрос астрологу" },
+    { id: "compat", label: "Совместимость" },
+    { id: "insights", label: "Инсайты" },
+  ];
+  const pro = [
     { id: "planets", label: "Планеты" },
     { id: "houses", label: "Дома" },
     { id: "aspects", label: "Аспекты" },
-    { id: "insights", label: "Инсайты" },
-    { id: "chat", label: "Вопрос" },
     { id: "wheel", label: "Wheel" },
-    { id: "compat", label: "Совместимость" },
   ];
   return `
-    <div class="tabs">
-      ${tabs
-        .map(
-          (t) => `<button class="tab ${currentTab === t.id ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`
-        )
-        .join("")}
+    <div class="tabs-group">
+      <div class="tabs-title">Режим</div>
+      <div class="tabs">
+        ${primary
+          .map(
+            (t) => `<button class="tab ${currentTab === t.id ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`
+          )
+          .join("")}
+      </div>
+    </div>
+    <div class="tabs-group">
+      <div class="tabs-title muted-small">Для профессионального астролога</div>
+      <div class="tabs tabs-compact">
+        ${pro
+          .map(
+            (t) => `<button class="tab ${currentTab === t.id ? "active" : ""}" data-tab="${t.id}">${t.label}</button>`
+          )
+          .join("")}
+      </div>
     </div>
   `;
 }
