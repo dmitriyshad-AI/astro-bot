@@ -235,11 +235,12 @@ const doPlaceSuggest = debounce(async (query) => {
     const res = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
     const data = await res.json();
     if (data.ok) {
-      placeSuggestions = [
-        {
-          display_name: data.location.display_name,
-        },
-      ];
+      const item = { display_name: data.location.display_name };
+      // Автоподстановка единственного результата без списка
+      form.place = item.display_name;
+      placeSuggestions = [];
+      render();
+      return;
     } else {
       placeSuggestions = [];
     }
@@ -249,7 +250,7 @@ const doPlaceSuggest = debounce(async (query) => {
     placeLoading = false;
     render();
   }
-}, 3000);
+}, 700);
 
 const doSelfPlaceSuggest = debounce(async (query) => {
   if (!query || query.length < 2) {
@@ -264,7 +265,11 @@ const doSelfPlaceSuggest = debounce(async (query) => {
     const res = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
     const data = await res.json();
     if (data.ok) {
-      selfPlaceSuggestions = [{ display_name: data.location.display_name }];
+      const item = { display_name: data.location.display_name };
+      compatForm.self_place = item.display_name;
+      selfPlaceSuggestions = [];
+      render();
+      return;
     } else {
       selfPlaceSuggestions = [];
     }
@@ -274,7 +279,7 @@ const doSelfPlaceSuggest = debounce(async (query) => {
     selfPlaceLoading = false;
     render();
   }
-}, 3000);
+}, 700);
 
 const doPartnerPlaceSuggest = debounce(async (query) => {
   if (!query || query.length < 2) {
@@ -289,7 +294,11 @@ const doPartnerPlaceSuggest = debounce(async (query) => {
     const res = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
     const data = await res.json();
     if (data.ok) {
-      partnerPlaceSuggestions = [{ display_name: data.location.display_name }];
+      const item = { display_name: data.location.display_name };
+      compatForm.partner_place = item.display_name;
+      partnerPlaceSuggestions = [];
+      render();
+      return;
     } else {
       partnerPlaceSuggestions = [];
     }
@@ -299,7 +308,7 @@ const doPartnerPlaceSuggest = debounce(async (query) => {
     partnerPlaceLoading = false;
     render();
   }
-}, 3000);
+}, 700);
 
 async function submitForm() {
   error = "";
@@ -585,6 +594,60 @@ function prettyHouse(name) {
   return mapping[name] || name;
 }
 
+function buildInsightsCards(text) {
+  if (!text) return [];
+  const cleaned = text.replace(/\r/g, "").trim();
+  if (!cleaned) return [];
+  const numbered = cleaned.split(/\n?\s*\d+\)\s*/).filter((s) => s.trim().length > 0);
+  const blocks =
+    numbered.length > 1
+      ? numbered
+      : cleaned
+          .split(/\n{2,}/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+  return blocks.map((block, idx) => {
+    let body = block;
+    let evidence = [];
+    const evMatch = block.match(/основ[а-яё ]*на:?\s*(.+)/i);
+    if (evMatch) {
+      evidence = evMatch[1]
+        .split(/[;•,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      body = block.replace(evMatch[0], "").trim();
+    }
+    return {
+      title: `✨ Пункт ${idx + 1}`,
+      body,
+      evidence,
+    };
+  });
+}
+
+function renderInsightCards(text) {
+  const cards = buildInsightsCards(text);
+  if (!cards.length) return "<div class='muted-small'>Нет инсайтов</div>";
+  return `
+    <div class="insight-grid">
+      ${cards
+        .map(
+          (c) => `
+        <div class="insight-card">
+          <div class="insight-title">${c.title}</div>
+          <div class="insight-body">${c.body.replace(/\n/g, "<br/>")}</div>
+          ${
+            c.evidence && c.evidence.length
+              ? `<div class="chips">${c.evidence.map((e) => `<span class="chip">Основано: ${e}</span>`).join("")}</div>`
+              : ""
+          }
+        </div>`
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderTabs() {
   const tabs = [
     { id: "highlights", label: "Основное" },
@@ -668,11 +731,11 @@ function renderCompat() {
     <div class="section-title">Моя карта</div>
     <div class="field">
       <label for="self_date">Дата</label>
-      <input class="input" id="self_date" type="text" placeholder="ДД.ММ.ГГГГ" value="${compatForm.self_date}" />
+      <input class="input" id="self_date" type="text" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${compatForm.self_date}" />
     </div>
     <div class="field">
       <label for="self_time">Время</label>
-      <input class="input" id="self_time" type="text" placeholder="ЧЧ:ММ или пусто" value="${compatForm.self_time}" />
+      <input class="input" id="self_time" type="text" inputmode="numeric" placeholder="ЧЧ:ММ или пусто" value="${compatForm.self_time}" />
     </div>
     <div class="field">
       <label for="self_place">Место</label>
@@ -689,11 +752,11 @@ function renderCompat() {
     <div class="section-title">Партнёр</div>
     <div class="field">
       <label for="partner_date">Дата</label>
-      <input class="input" id="partner_date" type="text" placeholder="ДД.ММ.ГГГГ" value="${compatForm.partner_date}" />
+      <input class="input" id="partner_date" type="text" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${compatForm.partner_date}" />
     </div>
     <div class="field">
       <label for="partner_time">Время</label>
-      <input class="input" id="partner_time" type="text" placeholder="ЧЧ:ММ или пусто" value="${compatForm.partner_time}" />
+      <input class="input" id="partner_time" type="text" inputmode="numeric" placeholder="ЧЧ:ММ или пусто" value="${compatForm.partner_time}" />
     </div>
     <div class="field">
       <label for="partner_place">Место</label>
@@ -762,7 +825,8 @@ function renderTabContent(chart, wheelLink) {
         <div class="skeleton skeleton-line"></div>
         <div class="skeleton skeleton-line short"></div>
       `;
-    if (insightsText) return `<div class="list"><div>${insightsText.replace(/\n/g, "<br/>")}</div></div>`;
+    const insightsSource = insightsText || result.llm_summary || result.summary || "";
+    if (insightsSource) return renderInsightCards(insightsSource);
     return `
       ${insightsError ? `<div class="error">${insightsError}</div>` : ""}
       <div class='muted-small'>Нет инсайтов. Нажмите 'Сгенерировать инсайты'.</div>
@@ -953,12 +1017,12 @@ function render() {
         </div>
         <div class="field">
           <label for="birth_date">Дата рождения</label>
-          <input class="input" id="birth_date" type="text" placeholder="ДД.ММ.ГГГГ" value="${form.birth_date}" />
+          <input class="input" id="birth_date" type="text" inputmode="numeric" placeholder="ДД.ММ.ГГГГ" value="${form.birth_date}" />
         </div>
         <div class="row">
           <div class="field">
             <label for="birth_time">Время</label>
-            <input class="input" id="birth_time" type="text" placeholder="ЧЧ:ММ или пусто" value="${form.birth_time}" />
+            <input class="input" id="birth_time" type="text" inputmode="numeric" placeholder="ЧЧ:ММ или пусто" value="${form.birth_time}" />
           </div>
           <div class="field">
             <label>&nbsp;</label>
@@ -1129,6 +1193,27 @@ function render() {
   document.getElementById("partner_place")?.addEventListener("input", (e) => {
     compatForm.partner_place = e.target.value;
     doPartnerPlaceSuggest(compatForm.partner_place);
+  });
+  // Автоформат дат/времени в совместимости
+  document.getElementById("self_date")?.addEventListener("input", (e) => {
+    const formatted = formatDateInput(e.target.value);
+    e.target.value = formatted;
+    compatForm.self_date = formatted;
+  });
+  document.getElementById("self_time")?.addEventListener("input", (e) => {
+    const formatted = formatTimeInput(e.target.value);
+    e.target.value = formatted;
+    compatForm.self_time = formatted;
+  });
+  document.getElementById("partner_date")?.addEventListener("input", (e) => {
+    const formatted = formatDateInput(e.target.value);
+    e.target.value = formatted;
+    compatForm.partner_date = formatted;
+  });
+  document.getElementById("partner_time")?.addEventListener("input", (e) => {
+    const formatted = formatTimeInput(e.target.value);
+    e.target.value = formatted;
+    compatForm.partner_time = formatted;
   });
   document.querySelectorAll("[data-aspect]")?.forEach((el) => {
     el.addEventListener("click", () => {

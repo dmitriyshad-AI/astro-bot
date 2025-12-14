@@ -33,6 +33,8 @@ body {
   min-height: 100vh;
   background: var(--bg);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
   color: var(--text);
   display: flex;
   align-items: center;
@@ -169,7 +171,7 @@ body {
   border-radius: 10px;
   border: 1px solid #e2e8f0;
   background: rgba(255, 255, 255, 0.85);
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .input:focus {
@@ -237,6 +239,48 @@ body {
 .small-text {
   font-size: 13px;
   color: var(--muted);
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.insight-card {
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(108, 123, 255, 0.25);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.insight-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.insight-body {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.chips {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(108, 123, 255, 0.18);
+  color: #1f2a44;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .loading {
